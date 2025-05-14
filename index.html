@@ -180,6 +180,10 @@
       }
       window.gist = Gist(gistToken);
       window.gistStorageKey = localStorage.getItem("minnidb-gist-id");
+      if (!window.gistStorageKey) {
+        alert("Please set your Gist token in localStorage with key 'minnidb-gist-token'.");
+        throw new Error("Gist token not found in localStorage.");
+      }
       window.gistSaveData = async () => {
         let allData = Object.entries(localStorage)
           .filter((k) => k[0].match(/\-list$/))
