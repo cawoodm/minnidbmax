@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link type="image/png" sizes="96x96" rel="icon" href="favicon.png" />
+    <title>MinniDBMax</title>
+
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background-color: #fff;
+      }
+      h1 {
+        margin-top: 0;
+        margin: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MinniDBMax</h1>
+    <button onclick="addTable()">+ New Table</button>
+    <button onclick="dataPush()">⬆️ Push Data</button>
+    <button onclick="dataPull()">⬇️ Pull Data</button>
+
+    <template id="data-entry-template">
+      <style>
+        :host {
+          display: block;
+          font-family: Arial, sans-serif;
+          margin-bottom: 40px;
+        }
+        .container {
+          display: flex;
+          flex-direction: column;
+          width: 100%;
+          max-width: 1200px;
+          margin: 0;
+          /*
+          background-color: white;
+          box-sizing: border-box;
+          padding: 10px;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);*/
+        }
+        .input-container {
+          margin-bottom: 15px;
+        }
+        input {
+          border: 1px solid #ddd;
+          border-radius: 4px;
+        }
+        .data-input {
+          flex-grow: 1;
+          padding: 10px;
+          font-size: 16px;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+        }
+        .outer-container {
+          /*overflow-y: scroll;
+          max-height: 500px;*/
+        }
+        .filter-row.hide {
+          display: none;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 10px;
+        }
+        th,
+        td {
+          padding: 12px;
+          text-align: left;
+          border-bottom: 1px solid #ddd;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          overflow: hidden;
+        }
+        th.number,
+        td.number {
+          text-align: right;
+        }
+        th.actions,
+        td.actions {
+          text-align: center;
+        }
+        th {
+          background-color: #f2f2f2;
+          cursor: pointer;
+          position: relative;
+        }
+        th:hover {
+          background-color: #e8e8e8;
+        }
+        th::after {
+          content: "";
+          display: inline-block;
+          width: 0;
+          height: 0;
+          margin-left: 5px;
+        }
+        th.asc::after {
+          content: "▲";
+          font-size: 10px;
+        }
+        th.desc::after {
+          content: "▼";
+          font-size: 10px;
+        }
+        .delete-btn {
+          background-color: #fff;
+          background-image: url(./icon-delete.svg);
+          background-size: 24px auto;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 5px 10px;
+          cursor: pointer;
+        }
+        .delete-btn:hover {
+          background-color: #fdd;
+        }
+        .alert {
+          padding: 0.75rem 1.25rem;
+          margin-bottom: 1rem;
+          border: 1px solid transparent;
+          border-radius: 0.25rem;
+          color: #721c24;
+          background-color: #f8d7da;
+          border-color: #f5c6cb;
+          display: none;
+        }
+        .alert.success {
+          color: #155724;
+          background-color: #d4edda;
+          border-color: #c3e6cb;
+        }
+        .alert.error {
+          color: #721c24;
+          background-color: #f8d7da;
+          border-color: #f5c6cb;
+        }
+        .column-name {
+          cursor: text;
+        }
+        .empty-message {
+          padding: 15px;
+          background-color: #f9f9f9;
+          text-align: center;
+          border-radius: 4px;
+        }
+
+        .resizer {
+          width: 5px;
+          height: 5px;
+          background: #333;
+          position: absolute;
+        }
+        .title {
+          font-size: 1.5em;
+          padding: 10px;
+          cursor: move;
+          background-color: #cacaca;
+          border-radius: 8px;
+        }
+        summary {
+          cursor: pointer;
+          list-style: none;
+        }
+      </style>
+
+      <div class="container">
+        <div class="alert success"></div>
+        <div class="outer-container">
+          <div class="input-container">
+            <div style="display: flex">
+              <textarea class="data-input" placeholder='Enter comma separated values (e.g. "Text", Category, 12.93, 2024-01-01, true)'></textarea>
+            </div>
+          </div>
+          <div class="table-container">
+            <div class="empty-message">Enter your first data row to establish columns and data types.</div>
+          </div>
+        </div>
+      </div>
+    </template>
+    <script src="winbox.bundle.min.js"></script>
+    <!--<script src="resize.js"></script>-->
+    <script type="module">
+      // https://gist.github.com/cawoodm
+      // Create fine-grained token with gist scope: https://github.com/settings/apps
+      import { Gist } from "./lib/gist.js";
+      function gistInit() {
+        const gistToken = localStorage.getItem("minnidb-gist-token");
+        if (!gistToken) {
+          alert("Please set your Gist token in localStorage with key 'minnidb-gist-token'.");
+          throw new Error("Gist token not found in localStorage.");
+        }
+        window.gist = Gist(gistToken);
+        window.gistStorageKey = localStorage.getItem("minnidb-gist-id");
+        if (!window.gistStorageKey) {
+          alert("Please set your Gist token in localStorage with key 'minnidb-gist-token'.");
+          throw new Error("Gist token not found in localStorage.");
+        }
+      }
+      window.gistSaveData = async () => {
+        gistInit();
+        let allData = Object.entries(localStorage)
+          .filter((k) => k[0].match(/\-list$/))
+          .map(([key]) => ({ key, data: localStorage.getItem(key) }));
+        await gist.update(window.gistStorageKey, {
+          description: "MinniDBMax data",
+          files: {
+            "data.json": {
+              content: JSON.stringify({
+                tables: allData,
+              }),
+            },
+          },
+        });
+        console.debug("Data saved to Gist!");
+      };
+      window.gistLoadData = async () => {
+        gistInit();
+        let res = await gist.getOne(window.gistStorageKey);
+        let g1 = await res.json();
+        const data = JSON.parse(g1.files["data.json"].content);
+        data.tables.forEach((table) => {
+          localStorage.setItem(table.key, table.data);
+          let el = document.querySelector("#table-" + table.key.replace("-list", ""));
+          if (!el) {
+            createTable(table.key.replace("-list", ""), JSON.parse(table.data));
+          } else {
+            el.refresh();
+            //el.importData(JSON.parse(table.data));
+          }
+        });
+        console.debug("Data loaded from Gist!", `https://gist.github.com/cawoodm/${window.gistStorageKey}`);
+      };
+      import { DataEntryTable } from "./lib/data-table.js";
+      customElements.define("data-entry-table", DataEntryTable);
+    </script>
+    <script>
+      function dataPush() {
+        gistSaveData();
+      }
+      function dataPull() {
+        gistLoadData();
+      }
+      function addTable() {
+        let title = prompt("Enter table title:");
+        if (!title) return;
+        let code = title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+        if (localStorage.getItem(code + "-list")) {
+          alert("Table with this name already exists. Please choose a different name.");
+          return;
+        }
+        createTable(code);
+      }
+
+      function createTable(code, data) {
+        function toTitleCase(str) {
+          return str.replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase());
+        }
+        const newTable = document.createElement("data-entry-table");
+        newTable.setAttribute("storage-key", `${code}-list`);
+        newTable.setAttribute("id", "table-" + code);
+        // https://github.com/nextapps-de/winbox?tab=readme-ov-file
+        let win = new WinBox(toTitleCase(code), {
+          mount: newTable,
+          onresize: newTable.resizedCallback.bind(newTable),
+          onmove: newTable.movedCallback.bind(newTable),
+          onminimize: newTable.minimizedCallback.bind(newTable),
+          onmaximize: newTable.maximizedCallback.bind(newTable),
+          onrestore: newTable.restoredCallback.bind(newTable),
+          onclose: () => deleteTable(this, newTable),
+        });
+        win.removeControl("wb-full");
+        // https://github.com/ionic-team/ionicons
+        win.addControl({
+          index: 0,
+          class: "wb-min",
+          image: "icon-filter.svg",
+          click: function (event, winbox) {
+            //console.log(winbox.id, document.getElementById("table-" + code).shadowRoot.querySelector(".filter-row"));
+            document
+              .getElementById("table-" + code)
+              .shadowRoot.querySelector(".filter-row")
+              .classList.toggle("hide");
+            this.classList.toggle("active");
+          },
+        });
+        if (data?.elementRect) {
+          win.move(data.elementRect.x, data.elementRect.y);
+          win.resize(data.elementRect.width, data.elementRect.height);
+        }
+        if (data?.elementRect?.minimized) win.minimize(true);
+        else if (data?.elementRect?.maximized) win.maximize(true);
+        // TODO: Remove data reading from data table class?
+        // if (data) newTable.importData(data);
+        //document.body.appendChild(newTable);
+        //makeDraggableAndResizable(newTable.shadowRoot.querySelector(".container"), newTable.resizedCallback.bind(newTable));
+      }
+
+      function deleteTable(win, table) {
+        if (!confirm("Are you sure you want to delete this table?")) return;
+        let key = table.getAttribute("storage-key");
+        localStorage.removeItem(key);
+        win.close();
+      }
+
+      // Example of how to interact with the component programmatically
+      document.addEventListener("DOMContentLoaded", function () {
+        //gistLoadData(); return;
+        Object.entries(localStorage)
+          .filter((k) => k[0].match(/\-list$/))
+          .forEach(([key, data]) => createTable(key.replace(/\-list$/, ""), JSON.parse(data)));
+
+        console.debug("Data loaded from localStorage");
+      });
+    </script>
+  </body>
+</html>

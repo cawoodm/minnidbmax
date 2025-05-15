@@ -1,0 +1,24 @@
+[CmdletBinding()]param()
+function main() {
+  
+  $SrcDir = $PSScriptRoot
+  $targetDir = "C:\projects\Marc\cawoodm.github.io\minnidbmax"
+
+  Push-Location $SrcDir
+  $ver = (Get-Content -raw .\package.json | ConvertFrom-Json).version
+  vite build --base /minnidbmax/
+  if (-not (Test-Path $targetDir)) {mkdir $targetDir | Out-Null}
+  Copy-Item dist\* $targetDir -Force -Recurse
+
+  Push-Location $targetDir
+  git add . && git commit -a -m "MinniDBMax App $ver" && git push
+  Pop-Location
+
+  Pop-Location
+
+}
+$ErrorActionPreference = "Stop"
+main
+
+#$data = import-csv C:\marc\acc\Finances\cc.tsv -Delimiter "`t"
+#$data | ConvertTo-Json
