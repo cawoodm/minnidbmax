@@ -24,6 +24,7 @@
     <button onclick="addTable()">+ New Table</button>
     <button onclick="dataPush()">⬆️ Push Data</button>
     <button onclick="dataPull()">⬇️ Pull Data</button>
+    <button onclick="dataDump()">🗃️ Dump Data</button>
 
     <template id="data-entry-template">
       <style>
@@ -208,16 +209,16 @@
       }
       window.gistSaveData = async () => {
         gistInit();
-        let allData = Object.entries(localStorage)
+        let tables = {};
+        Object.entries(localStorage)
           .filter((k) => k[0].match(/\-list$/))
-          .map(([key]) => ({ key, data: localStorage.getItem(key) }));
+          .map(([key, data]) => [key.replace(/\-list$/, ""), data])
+          .forEach(([key, data]) => (tables[key] = data));
         await gist.update(window.gistStorageKey, {
           description: "MinniDBMax data",
           files: {
             "data.json": {
-              content: JSON.stringify({
-                tables: allData,
-              }),
+              content: JSON.stringify({ tables }),
             },
           },
         });
@@ -227,12 +228,14 @@
         gistInit();
         let res = await gist.getOne(window.gistStorageKey);
         let g1 = await res.json();
-        const data = JSON.parse(g1.files["data.json"].content);
-        data.tables.forEach((table) => {
-          localStorage.setItem(table.key, table.data);
-          let el = document.querySelector("#table-" + table.key.replace("-list", ""));
+        const content = JSON.parse(g1.files["data.json"].content);
+        Object.keys(content.tables).forEach((key) => {
+          const data = content.tables[key];
+          if (!data) throw new Error("No data found for table: " + key);
+          localStorage.setItem(`${key}-list`, data);
+          let el = document.querySelector("#table-" + key);
           if (!el) {
-            createTable(table.key.replace("-list", ""), JSON.parse(table.data));
+            createTable(key, JSON.parse(data));
           } else {
             el.refresh();
             //el.importData(JSON.parse(table.data));
@@ -250,6 +253,16 @@
       }
       function dataPull() {
         gistLoadData();
+      }
+      function dataDump() {
+        const dump = {
+          tables: {},
+        };
+        Object.entries(localStorage)
+          .filter((k) => k[0].match(/\-list$/))
+          .map(([key, data]) => [key.replace(/\-list$/, ""), data])
+          .forEach(([key, data]) => (dump.tables[key] = JSON.parse(data)));
+        downloadFile("minnidbmax.json", JSON.stringify(dump, null, 2));
       }
       function addTable() {
         let title = prompt("Enter table title:");
@@ -271,9 +284,6 @@
         document.body.removeChild(element);
       }
       function createTable(code, data) {
-        function toTitleCase(str) {
-          return str.replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase());
-        }
         const newTable = document.createElement("data-entry-table");
         newTable.setAttribute("storage-key", `${code}-list`);
         newTable.setAttribute("id", "table-" + code);
@@ -323,9 +333,9 @@
         if (data?.elementRect?.minimized) win.minimize(true);
         else if (data?.elementRect?.maximized) win.maximize(true);
         // TODO: Remove data reading from data table class?
-        // if (data) newTable.importData(data);
-        //document.body.appendChild(newTable);
-        //makeDraggableAndResizable(newTable.shadowRoot.querySelector(".container"), newTable.resizedCallback.bind(newTable));
+        function toTitleCase(str) {
+          return str.replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase());
+        }
       }
 
       function deleteTable(win, table) {
@@ -340,7 +350,8 @@
         //gistLoadData(); return;
         Object.entries(localStorage)
           .filter((k) => k[0].match(/\-list$/))
-          .forEach(([key, data]) => createTable(key.replace(/\-list$/, ""), JSON.parse(data)));
+          .map(([key, data]) => [key.replace(/\-list$/, ""), data])
+          .forEach(([key, data]) => createTable(key, JSON.parse(data)));
 
         console.debug("Data loaded from localStorage");
       });
