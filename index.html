@@ -63,7 +63,7 @@
           /*overflow-y: scroll;
           max-height: 500px;*/
         }
-        .filter-row.hide {
+        .hide {
           display: none;
         }
         table {
@@ -176,7 +176,7 @@
       <div class="container">
         <div class="alert success"></div>
         <div class="outer-container">
-          <div class="input-container">
+          <div class="input-container hide">
             <div style="display: flex">
               <textarea class="data-input" placeholder='Enter comma separated values (e.g. "Text", Category, 12.93, 2024-01-01, true)'></textarea>
             </div>
@@ -244,6 +244,7 @@
       customElements.define("data-entry-table", DataEntryTable);
     </script>
     <script>
+      // Global functions called from UI
       function dataPush() {
         gistSaveData();
       }
@@ -260,7 +261,15 @@
         }
         createTable(code);
       }
-
+      function downloadFile(filename, content) {
+        var element = document.createElement("a");
+        element.setAttribute("href", "data:text/csv;charset=utf-8," + encodeURIComponent(content));
+        element.setAttribute("download", filename);
+        element.style.display = "none";
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+      }
       function createTable(code, data) {
         function toTitleCase(str) {
           return str.replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase());
@@ -279,17 +288,31 @@
           onclose: () => deleteTable(this, newTable),
         });
         win.removeControl("wb-full");
+        // https://ionic.io/ionicons
         // https://github.com/ionic-team/ionicons
         win.addControl({
-          index: 0,
-          class: "wb-min",
+          class: "wb-full",
           image: "icon-filter.svg",
           click: function (event, winbox) {
-            //console.log(winbox.id, document.getElementById("table-" + code).shadowRoot.querySelector(".filter-row"));
             document
               .getElementById("table-" + code)
               .shadowRoot.querySelector(".filter-row")
               .classList.toggle("hide");
+          },
+        });
+        win.addControl({
+          class: "wb-full",
+          image: "icon-data-input.svg",
+          click: function (event, winbox) {
+            newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
+          },
+        });
+        win.addControl({
+          class: "wb-full",
+          image: "icon-download-outline.svg",
+          click: function (event, winbox) {
+            const csvData = newTable.exportDataCSV();
+            downloadFile(code + ".csv", csvData);
             this.classList.toggle("active");
           },
         });
