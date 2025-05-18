@@ -6,12 +6,13 @@ function main() {
 
   Push-Location $SrcDir
   $ver = (Get-Content -raw .\package.json | ConvertFrom-Json).version
+  $msg = (git log -1)[-1].trim()
   vite build --base /minnidbmax/
   if (-not (Test-Path $targetDir)) {mkdir $targetDir | Out-Null}
   Copy-Item dist\* $targetDir -Force -Recurse
 
   Push-Location $targetDir
-  git add . && git commit -a -m "MinniDBMax App $ver" && git push
+  git add . && git commit -a -m "MinniDBMax App $($ver): $msg" && git push
   Pop-Location
 
   Pop-Location
