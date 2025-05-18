@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link type="image/png" sizes="96x96" rel="icon" href="favicon.png" />
-    <title>MinniDBMax v0.0.2</title>
+    <title>MinniDBMax v0.0.3</title>
 
     <style>
       body {
@@ -233,9 +233,9 @@
             let el = document.querySelector("#table-" + table);
             if (!el) {
               try {
-                createTable(table, JSON.parse(data));
+                createTable(table, data);
               } catch (e) {
-                alert(`Error loading table (${table}) data:`, e);
+                alert(`Error loading table (${table}) data:`, e.message);
               }
             } else {
               el.refresh();

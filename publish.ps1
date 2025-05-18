@@ -10,6 +10,7 @@ function main() {
   vite build --base /minnidbmax/
   if (-not (Test-Path $targetDir)) {mkdir $targetDir | Out-Null}
   Copy-Item dist\* $targetDir -Force -Recurse
+  Copy-Item .\README.md $targetDir -Force
 
   Push-Location $targetDir
   git add . && git commit -a -m "MinniDBMax App $($ver): $msg" && git push

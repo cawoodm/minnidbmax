@@ -10,6 +10,7 @@ export function DataStore(prefix) {
     },
     // Get contents of item
     get(key) {
+      if (!key) throw new Error("Store.get failed: Key is required");
       let value = localStorage.getItem(prefix + key);
       try {
         value = JSON.parse(value);
@@ -19,6 +20,7 @@ export function DataStore(prefix) {
     },
     // Write contents of item
     set(key, value) {
+      if (!key) throw new Error("Store.set failed: Key is required");
       localStorage.setItem(prefix + key, JSON.stringify(value));
     },
     // Remove item
