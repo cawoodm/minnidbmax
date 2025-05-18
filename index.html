@@ -191,32 +191,31 @@
       // Create fine-grained token with gist scope: https://github.com/settings/apps
       import { Gist } from "./lib/gist.js";
       function gistInit() {
-        const gistToken = localStorage.getItem("minnidb-gist-token");
+        const gistToken = store.get(".gist-token");
         if (!gistToken) {
-          alert("Please set your Gist token in localStorage with key 'minnidb-gist-token'.");
-          throw new Error("Gist token not found in localStorage.");
+          alert("Please set your Gist token in browser store with key 'minnidb-gist-token'.");
+          throw new Error("Gist token not found in browser store.");
         }
         window.gist = Gist(gistToken);
-        window.gistStorageKey = localStorage.getItem("minnidb-gist-id");
+        window.gistStorageKey = store.get(".gist-id");
         if (!window.gistStorageKey) {
-          alert("Please set your Gist token in localStorage with key 'minnidb-gist-token'.");
-          throw new Error("Gist token not found in localStorage.");
+          alert("Please set your Gist token in browser store with key 'minnidb-gist-token'.");
+          throw new Error("Gist token not found in browser store.");
         }
       }
       window.gistSaveData = async () => {
         gistInit();
-        let tables = {};
-        Object.entries(localStorage)
-          .filter((k) => k[0].match(/\-list$/))
-          .map(([key, data]) => [key.replace(/\-list$/, ""), data])
-          .forEach(([key, data]) => (tables[key] = data));
+        let files = {};
+        store.dir({ suffix: ".table.json" }).forEach(([key, data]) => {
+          files[key] = {
+            type: "application/json",
+            filename: key,
+            content: JSON.stringify(data, null, 2),
+          };
+        });
         await gist.update(window.gistStorageKey, {
           description: "MinniDBMax data",
-          files: {
-            "data.json": {
-              content: JSON.stringify({ tables }),
-            },
-          },
+          files,
         });
         console.debug("Data saved to Gist!");
       };
@@ -224,23 +223,31 @@
         gistInit();
         let res = await gist.getOne(window.gistStorageKey);
         let g1 = await res.json();
-        const content = JSON.parse(g1.files["data.json"].content);
-        Object.keys(content.tables).forEach((key) => {
-          const data = content.tables[key];
-          if (!data) throw new Error("No data found for table: " + key);
-          localStorage.setItem(`${key}-list`, data);
-          let el = document.querySelector("#table-" + key);
-          if (!el) {
-            createTable(key, JSON.parse(data));
-          } else {
-            el.refresh();
-            //el.importData(JSON.parse(table.data));
-          }
-        });
+        Object.keys(g1.files)
+          .filter((file) => file.endsWith(".table.json"))
+          .forEach((file) => {
+            const data = JSON.parse(g1.files[file].content);
+            const table = file.replace(".table.json", "");
+            if (!data) throw new Error("No data found for table: " + table);
+            store.set(file, data);
+            let el = document.querySelector("#table-" + table);
+            if (!el) {
+              try {
+                createTable(table, JSON.parse(data));
+              } catch (e) {
+                alert(`Error loading table (${table}) data:`, e);
+              }
+            } else {
+              el.refresh();
+              //el.importData(JSON.parse(table.data));
+            }
+          });
         console.debug("Data loaded from Gist!", `https://gist.github.com/cawoodm/${window.gistStorageKey}`);
       };
       import { DataEntryTable } from "./lib/data-table.js";
       customElements.define("data-entry-table", DataEntryTable);
+      import { DataStore } from "./data-store";
+      window.store = DataStore("/minnidbmax/default/");
     </script>
     <script>
       // Global functions called from UI
@@ -251,20 +258,15 @@
         gistLoadData();
       }
       function dataDump() {
-        const dump = {
-          tables: {},
-        };
-        Object.entries(localStorage)
-          .filter((k) => k[0].match(/\-list$/))
-          .map(([key, data]) => [key.replace(/\-list$/, ""), data])
-          .forEach(([key, data]) => (dump.tables[key] = JSON.parse(data)));
+        const dump = {};
+        store.dir().forEach(([key, data]) => (dump[key] = data));
         downloadFile("minnidbmax.json", JSON.stringify(dump, null, 2));
       }
       function addTable() {
         let title = prompt("Enter table title:");
         if (!title) return;
         let code = title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
-        if (localStorage.getItem(code + "-list")) {
+        if (store.get(code + ".table.json")) {
           alert("Table with this name already exists. Please choose a different name.");
           return;
         }
@@ -281,7 +283,7 @@
       }
       function createTable(code, data) {
         const newTable = document.createElement("data-entry-table");
-        newTable.setAttribute("storage-key", `${code}-list`);
+        newTable.setAttribute("storage-key", `${code}.table.json`);
         newTable.setAttribute("id", "table-" + code);
         // https://github.com/nextapps-de/winbox?tab=readme-ov-file
         let win = new WinBox(toTitleCase(code), {
@@ -337,19 +339,15 @@
       function deleteTable(win, table) {
         if (!confirm("Are you sure you want to delete this table?")) return;
         let key = table.getAttribute("storage-key");
-        localStorage.removeItem(key);
+        store.delete(key);
         win.close();
       }
 
       // Example of how to interact with the component programmatically
       document.addEventListener("DOMContentLoaded", function () {
         //gistLoadData(); return;
-        Object.entries(localStorage)
-          .filter((k) => k[0].match(/\-list$/))
-          .map(([key, data]) => [key.replace(/\-list$/, ""), data])
-          .forEach(([key, data]) => createTable(key, JSON.parse(data)));
-
-        console.debug("Data loaded from localStorage");
+        store.dir({ suffix: ".table.json" }).forEach(([key, data]) => createTable(key.replace(".table.json", ""), data));
+        console.debug("Data loaded from browser store");
       });
     </script>
   </body>

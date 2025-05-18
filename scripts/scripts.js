@@ -12,3 +12,16 @@ backup.tables.forEach(({ key, data }) => {
   delete d.columnTypes;
   localStorage.setItem(key, JSON.stringify(d));
 });
+
+// List directory
+Object.entries(localStorage).filter(([k, v]) => k.startsWith("/minnidbmax/default"));
+
+// Clear directory
+Object.entries(localStorage)
+  .filter(([k, v]) => k.startsWith("/minnidbmax/default"))
+  .forEach(([k, v]) => localStorage.removeItem(k));
+
+// Move items to directory
+Object.entries(localStorage)
+  .filter(([k, v]) => k.endsWith("-list"))
+  .forEach(([k, v]) => localStorage.setItem("/minnidbmax/default/" + k.replace("-list", "") + ".table.json", v));
