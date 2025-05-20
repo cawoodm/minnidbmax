@@ -37,7 +37,7 @@
           display: flex;
           flex-direction: column;
           width: 100%;
-          max-width: 1200px;
+          /*max-width: 1200px;*/
           margin: 0;
           /*
                   background-color: white;
@@ -52,11 +52,17 @@
         input.dataInput {
           border: 0px;
           border-radius: 4px;
-          width: 100%;
+          field-sizing: content;
           height: 100%;
           box-sizing: border-box;
           padding: 5px;
           font-size: medium;
+        }
+        td.number input.dataInput {
+          text-align: right;
+          field-sizing: content;
+          min-width: 80px;
+          max-width: 200px;
         }
         .data-input {
           flex-grow: 1;
@@ -179,13 +185,11 @@
       <div class="container">
         <div class="alert success"></div>
         <div class="outer-container">
-          <div class="input-container hide">
+          <div class="table-container"></div>
+          <div class="input-container">
             <div style="display: flex">
               <textarea class="data-input" placeholder='Enter comma separated values (e.g. "Text", Category, 12.93, 2024-01-01, true)'></textarea>
             </div>
-          </div>
-          <div class="table-container">
-            <div class="empty-message">Enter your first data row to establish columns and data types.</div>
           </div>
         </div>
       </div>
@@ -253,7 +257,8 @@
       import { DataEntryTable } from "./lib/data-table.js";
       customElements.define("data-entry-table", DataEntryTable);
       import { DataStore } from "./lib/data-store";
-      window.store = DataStore("/minnidbmax/default/");
+      const storeKey = localStorage.getItem("/minnidbmax/.currentStore") || "default";
+      window.store = DataStore(`/minnidbmax/${storeKey}/`);
     </script>
     <script>
       // Global functions called from UI
@@ -319,6 +324,7 @@
           image: "icon-data-input.svg",
           click: function (event, winbox) {
             newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
+            newTable.shadowRoot.querySelector(".input-container textarea").focus();
           },
         });
         win.addControl({
