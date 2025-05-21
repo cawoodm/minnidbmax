@@ -6,16 +6,23 @@ Check it out at: http://cawoodm.github.io/minnidbmax/
 ![Screenshot of MinniDBMax](./docs/screenshot1.png)
 
 ## How to Use
-To begin, create a new table, paste some CSV data and press Enter to import.
+To begin, create a new table, paste (or drag and drop) some CSV data and press Enter to import.  
 ![New Table](./docs/screenshot_new_table.png)
+You can press Shift+Enter to add more than one line
 
-The first time you paste data the first row is used to infer data types (string, number, date, bool).  
+The first time you paste data the first row is used to infer data types (string, number, date, bool).    
 ![Import CSV](./docs/screenshot_import_csv.png)
 
-This aids with proper sorting.
+You can however start with a header line the first time you import data (before any columns are defined):  
+![Import Manually](./docs/screenshot-header.png)  
+Note you can specify a different label for the column from the technical field name as well as the type, default and max length:
+* `foo:Foo:number:1` Field name `foo` with label `Foo` of type `number` and default `1`
+* `sales_id:Sales Identifier:string::12` Field name `sales_id` with label `Sales Identifier` of type `string` , no default but a max length of `12`
+
+This aids with proper sorting.  
 ![Sorting](./docs/screenshot_sorting.png)
 
-Click filter to filter columns, enter a search term and press enter:
+Click filter to filter columns, enter a search term and press enter:  
 ![Filtering](./docs/screenshot_filter.png)
 
 ### Other:
