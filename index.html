@@ -357,7 +357,6 @@
         if (!confirm("Are you sure you want to delete this table?")) return;
         let key = table.getAttribute("storage-key");
         store.delete(key);
-        win.close();
       }
 
       // Example of how to interact with the component programmatically
