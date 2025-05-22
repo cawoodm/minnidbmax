@@ -32,6 +32,8 @@ Click filter to filter columns, enter a search term and press enter:
   * The first time you rename a column, the label is converted to a field name
 * Click delete icon to delete a row
 * Click the window close icon to delete a table
+* Open a new space with `?space=something`
+  * Default space is `?space=default`
 
 ## Data Storage
 Every change is immediately stored in your browsers `localStorage`.

@@ -262,7 +262,8 @@
       import { DataEntryTable } from "./lib/data-table.js";
       customElements.define("data-entry-table", DataEntryTable);
       import { DataStore } from "./lib/data-store";
-      const storeKey = localStorage.getItem("/minnidbmax/.currentStore") || "default";
+      var qs = new URLSearchParams(window.location.search);
+      const storeKey = (qs.has("space") && qs.get("space")) || localStorage.getItem("/minnidbmax/.currentStore") || "default";
       window.store = DataStore(`/minnidbmax/${storeKey}/`);
     </script>
     <script>
