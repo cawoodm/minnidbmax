@@ -2,21 +2,19 @@ addEventListener("error", function (e) {
   alert(e.message);
   // console.error(e.error.stack);
 });
-// https://gist.github.com/cawoodm
-// Create fine-grained token with gist scope: https://github.com/settings/apps
 
-import { DataEntryTable } from "./lib/data-table.js";
+import {DataEntryTable} from "./lib/data-table.js";
 customElements.define("data-entry-table", DataEntryTable);
 
-import { DataStore } from "./lib/data-store";
+import {DataStore} from "./lib/data-store";
 var qs = new URLSearchParams(location.search);
 const storeKey = (qs.has("space") && qs.get("space")) || localStorage.getItem("/minnidbmax/.currentStore") || "default";
 window.store = DataStore(`/minnidbmax/${storeKey}/`);
 
-import { SyncherGist } from "./lib/syncher-gist.js";
+import {SyncherGist} from "./lib/syncher-gist.js";
+const gistUsername = store.get(".gist-user");
 const gistToken = store.get(".gist-token");
 const gistId = store.get(".gist-id");
-const gistUsername = store.get(".gist-user");
 const syncher = SyncherGist(gistUsername, gistToken, gistId);
 
 function syncherValidate() {
@@ -28,7 +26,7 @@ function syncherValidate() {
     alert("Please set your Gist token in browser store with key '/minnidbmax/.gist-token'.");
     return false;
   }
-  if (!gistStorageKey) {
+  if (!gistId) {
     alert("Please set your Gist token in browser store with key '/minnidbmax/.gist-id'.");
     return false;
   }
@@ -37,18 +35,27 @@ function syncherValidate() {
 
 function dataPush() {
   if (!syncherValidate()) return false;
-  syncher.save();
+  await syncher.save();
 }
-function dataPull() {
+
+async function dataPull() {
   if (!syncherValidate()) return false;
   syncherValidate();
-  syncher.load();
+  try {
+    await syncher.load();
+    displayTables();
+  } catch (e) {
+    alert("Error loading data from Gist: " + e.message);
+    console.error(e);
+  }
 }
+
 function dataDump() {
   const dump = {};
   store.dir().forEach(([key, data]) => (dump[key] = data));
   downloadFile("minnidbmax.json", JSON.stringify(dump, null, 2));
 }
+
 function addTable() {
   let title = prompt("Enter table title:");
   if (!title) return;
@@ -59,6 +66,7 @@ function addTable() {
   }
   createTable(code);
 }
+
 function downloadFile(filename, content) {
   var element = document.createElement("a");
   element.setAttribute("href", "data:text/csv;charset=utf-8," + encodeURIComponent(content));
@@ -68,6 +76,7 @@ function downloadFile(filename, content) {
   element.click();
   document.body.removeChild(element);
 }
+
 function createTable(code, data) {
   const newTable = document.createElement("data-entry-table");
   newTable.setAttribute("storage-key", `${code}.table.json`);
@@ -130,10 +139,26 @@ function deleteTable(win, table) {
   store.delete(key);
 }
 
+function displayTables() {
+  store.dir({ suffix: ".table.json" }).forEach(([key, data]) => {
+    let table = key.replace(".table.json", "");
+    let el = document.querySelector("#table-" + table);
+    if (!el) {
+      try {
+        createTable(table, data);
+      } catch (e) {
+        alert(`Error loading table (${table}) data:`, e.message);
+      }
+    } else {
+      el.refresh();
+      //el.importData(JSON.parse(table.data));
+    }
+  });
+}
 // Example of how to interact with the component programmatically
 document.addEventListener("DOMContentLoaded", function () {
   //gistLoadData(); return;
-  store.dir({ suffix: ".table.json" }).forEach(([key, data]) => createTable(key.replace(".table.json", ""), data));
+  displayTables();
   console.debug("Data loaded from browser store");
   document.getElementById("dataPush").addEventListener("click", dataPush);
   document.getElementById("dataPull").addEventListener("click", dataPull);
