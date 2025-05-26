@@ -8,8 +8,8 @@ customElements.define("data-entry-table", DataEntryTable);
 
 import { DataStore } from "./lib/data-store";
 var qs = new URLSearchParams(location.search);
-const storeKey = (qs.has("space") && qs.get("space")) || localStorage.getItem("/minnidbmax/.currentStore") || "default";
-window.store = DataStore(`/minnidbmax/${storeKey}/`);
+const workspace = (qs.has("space") && qs.get("space")) || localStorage.getItem("/minnidbmax/.currentStore") || "default";
+window.store = DataStore(`/minnidbmax/${workspace}/`);
 
 import { SyncherGist } from "./lib/syncher-gist.js";
 const gistUsername = store.get(".gist-user");
@@ -19,15 +19,15 @@ const syncher = SyncherGist(gistUsername, gistToken, gistId);
 
 function syncherValidate() {
   if (!gistUsername) {
-    alert("Please set your Git username in browser store with key '/minnidbmax/.gist-user'.");
+    alert(`Please set your Git username in browser store with key '/minnidbmax/${workspace}/.gist-user'.`);
     return false;
   }
   if (!gistToken) {
-    alert("Please set your Gist token in browser store with key '/minnidbmax/.gist-token'.");
+    alert(`Please set your Gist token in browser store with key '/minnidbmax/${workspace}/.gist-token'.`);
     return false;
   }
   if (!gistId) {
-    alert("Please set your Gist token in browser store with key '/minnidbmax/.gist-id'.");
+    alert(`Please set your Gist token in browser store with key '/minnidbmax/${workspace}/.gist-id'.`);
     return false;
   }
   return true;

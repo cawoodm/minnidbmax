@@ -13,6 +13,7 @@ function main() {
   Copy-Item .\README.md $targetDir -Force
 
   Push-Location $targetDir
+  $msg = $msg -replace "$($ver):", ""
   git add . && git commit -a -m "MinniDBMax App $($ver): $msg" && git push
   Pop-Location
 
