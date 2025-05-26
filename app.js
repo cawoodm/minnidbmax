@@ -3,15 +3,15 @@ addEventListener("error", function (e) {
   // console.error(e.error.stack);
 });
 
-import {DataEntryTable} from "./lib/data-table.js";
+import { DataEntryTable } from "./lib/data-table.js";
 customElements.define("data-entry-table", DataEntryTable);
 
-import {DataStore} from "./lib/data-store";
+import { DataStore } from "./lib/data-store";
 var qs = new URLSearchParams(location.search);
 const storeKey = (qs.has("space") && qs.get("space")) || localStorage.getItem("/minnidbmax/.currentStore") || "default";
 window.store = DataStore(`/minnidbmax/${storeKey}/`);
 
-import {SyncherGist} from "./lib/syncher-gist.js";
+import { SyncherGist } from "./lib/syncher-gist.js";
 const gistUsername = store.get(".gist-user");
 const gistToken = store.get(".gist-token");
 const gistId = store.get(".gist-id");
@@ -33,7 +33,7 @@ function syncherValidate() {
   return true;
 }
 
-function dataPush() {
+async function dataPush() {
   if (!syncherValidate()) return false;
   await syncher.save();
 }
