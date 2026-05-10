@@ -1,17 +1,26 @@
+declare var WinBox: any;
 addEventListener("error", function (e) {
   alert(e.message);
   // console.error(e.error.stack);
 });
 
-import { DataEntryTable } from "./lib/data-table.js";
+import { DataEntryTable } from "./data-table.js";
 customElements.define("data-entry-table", DataEntryTable);
 
-import { DataStore } from "./lib/data-store";
+import { DataStore } from "./data-store.js";
+
+declare global {
+  interface Window {
+    store: ReturnType<typeof DataStore>;
+  }
+}
+
 var qs = new URLSearchParams(location.search);
 const workspace = (qs.has("space") && qs.get("space")) || localStorage.getItem("/minnidbmax/.currentStore") || "default";
-window.store = DataStore(`/minnidbmax/${workspace}/`);
+const store = DataStore(`/minnidbmax/${workspace}/`);
+window.store = store; // Expose store globally for debugging
 
-import { SyncherGist } from "./lib/syncher-gist.js";
+import { SyncherGist } from "./syncher-gist.js";
 const gistUsername = store.get(".gist-user");
 const gistToken = store.get(".gist-token");
 const gistId = store.get(".gist-id");
@@ -45,15 +54,65 @@ async function dataPull() {
     await syncher.load();
     displayTables();
   } catch (e) {
-    alert("Error loading data from Gist: " + e.message);
+    if (e instanceof Error) {
+      alert("Error loading data from Gist: " + e.message);
+    }
     console.error(e);
   }
 }
 
 function dataDump() {
   const dump = {};
-  store.dir().forEach(([key, data]) => (dump[key] = data));
+  store.dir({ suffix: ".table.json" }).forEach(([key, data]) => (dump[key] = data));
   downloadFile("minnidbmax.json", JSON.stringify(dump, null, 2));
+}
+
+function listWorkspaces(): string[] {
+  const set = new Set<string>();
+  const re = /^\/minnidbmax\/([^/]+)\/.+/;
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const m = key && key.match(re);
+    if (m) set.add(m[1]);
+  }
+  set.add(workspace);
+  return [...set].sort();
+}
+
+function populateWorkspaceSelect() {
+  const select = document.getElementById("workspaceSelect") as HTMLSelectElement;
+  select.innerHTML = "";
+  for (const ws of listWorkspaces()) {
+    const opt = document.createElement("option");
+    opt.value = ws;
+    opt.textContent = ws;
+    if (ws === workspace) opt.selected = true;
+    select.appendChild(opt);
+  }
+  const newOpt = document.createElement("option");
+  newOpt.value = "__new__";
+  newOpt.textContent = "<new workspace>";
+  select.appendChild(newOpt);
+}
+
+function switchWorkspace(name: string) {
+  if (name === workspace) return;
+  localStorage.setItem("/minnidbmax/.currentStore", name);
+  const url = new URL(location.href);
+  url.searchParams.delete("space");
+  location.replace(url.toString());
+}
+
+function onWorkspaceChange(e: Event) {
+  const select = e.target as HTMLSelectElement;
+  if (select.value === "__new__") {
+    const name = prompt("Enter new workspace name:");
+    select.value = workspace;
+    if (!name || !name.trim()) return;
+    switchWorkspace(name.trim());
+    return;
+  }
+  switchWorkspace(select.value);
 }
 
 function addTable() {
@@ -64,7 +123,7 @@ function addTable() {
     alert("Table with this name already exists. Please choose a different name.");
     return;
   }
-  createTable(code);
+  createTable(code, null);
 }
 
 function downloadFile(filename, content) {
@@ -77,8 +136,10 @@ function downloadFile(filename, content) {
   document.body.removeChild(element);
 }
 
+//import WinBox from "winbox";
+
 function createTable(code, data) {
-  const newTable = document.createElement("data-entry-table");
+  const newTable = document.createElement("data-entry-table") as DataEntryTable;
   newTable.setAttribute("storage-key", `${code}.table.json`);
   newTable.setAttribute("id", "table-" + code);
   // https://github.com/nextapps-de/winbox?tab=readme-ov-file
@@ -89,9 +150,9 @@ function createTable(code, data) {
     onminimize: newTable.minimizedCallback.bind(newTable),
     onmaximize: newTable.maximizedCallback.bind(newTable),
     onrestore: newTable.restoredCallback.bind(newTable),
-    onclose: () => deleteTable(this, newTable),
+    onclose: () => deleteTable(newTable),
   });
-  win.removeControl("wb-full");
+  win.removeControl("full");
   // https://ionic.io/ionicons
   // https://github.com/ionic-team/ionicons
   win.addControl({
@@ -109,7 +170,7 @@ function createTable(code, data) {
     image: "icon-data-input.svg",
     click: function (event, winbox) {
       newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
-      newTable.shadowRoot.querySelector(".input-container textarea").focus();
+      (newTable.shadowRoot.querySelector(".input-container textarea") as HTMLTextAreaElement).focus();
     },
   });
   win.addControl({
@@ -133,21 +194,23 @@ function createTable(code, data) {
   }
 }
 
-function deleteTable(win, table) {
-  if (!confirm("Are you sure you want to delete this table?")) return;
+function deleteTable(table): boolean {
+  if (!confirm("Are you sure you want to delete this table?")) return false;
   let key = table.getAttribute("storage-key");
   store.delete(key);
+  return true;
 }
 
 function displayTables() {
   store.dir({ suffix: ".table.json" }).forEach(([key, data]) => {
     let table = key.replace(".table.json", "");
-    let el = document.querySelector("#table-" + table);
+    let el: DataEntryTable = document.querySelector("#table-" + table);
     if (!el) {
       try {
         createTable(table, data);
       } catch (e) {
-        alert(`Error loading table (${table}) data:`, e.message);
+        console.error(e);
+        if (e instanceof Error) alert(`Error loading table (${table}) data: ${e.message}`);
       }
     } else {
       el.refresh();
@@ -157,11 +220,12 @@ function displayTables() {
 }
 // Example of how to interact with the component programmatically
 document.addEventListener("DOMContentLoaded", function () {
-  //gistLoadData(); return;
+  //gistSynch();
+  populateWorkspaceSelect();
   displayTables();
-  console.debug("Data loaded from browser store");
   document.getElementById("dataPush").addEventListener("click", dataPush);
   document.getElementById("dataPull").addEventListener("click", dataPull);
   document.getElementById("dataDump").addEventListener("click", dataDump);
   document.getElementById("addTable").addEventListener("click", addTable);
+  document.getElementById("workspaceSelect").addEventListener("change", onWorkspaceChange);
 });

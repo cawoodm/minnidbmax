@@ -1,7 +1,5 @@
 "use strict";
 
-// @ts-ignore: Object is possibly 'null'.
-
 export class DataEntryTable extends HTMLElement {
   constructor() {
     super();
@@ -33,7 +31,7 @@ export class DataEntryTable extends HTMLElement {
     this.dataInput = /** @type {!HTMLInputElement} */ (this.shadowRoot.querySelector(".input-container textarea"));
     if (!this.dataInput) throw new Error("Data input element not found in template.");
     this.tableContainer = this.shadowRoot.querySelector(".table-container");
-    this.alertBox = this.shadowRoot.querySelector(".alert");
+    this.alertBox = /** @type {any} */ (this.shadowRoot.querySelector(".alert"));
 
     //this.titleElement = this.shadowRoot.querySelector(".title");
     //if (!this.titleElement) throw new Error("Title element not found in template.");
@@ -62,7 +60,7 @@ export class DataEntryTable extends HTMLElement {
     const dataInput = this.dataInput;
     const processInput = this.processInput.bind(this);
     reader.onload = function (e) {
-      dataInput.value = e.target.result;
+      dataInput.value = e.target.result.toString();
       processInput();
     };
     reader.readAsText(file, "UTF-8");
@@ -414,53 +412,71 @@ export class DataEntryTable extends HTMLElement {
   addTableEventListeners() {
     // Filter fields
     //this.shadowRoot.querySelector(".container").addEventListener("drop", this.handleDataInputDrop.bind(this));
-    const filterFields = this.shadowRoot.querySelectorAll("td input.filter-input");
+    const filterFields = /** @type {NodeListOf<HTMLInputElement>} */ (this.shadowRoot.querySelectorAll("td input.filter-input"));
     filterFields.forEach((field) => {
-      field.addEventListener("keypress", (e) => {
-        // Since we render the whole table we can't filter until enter is pressed
-        if (e.key !== "Enter") return;
-        e.preventDefault();
-        const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
-        const filterValue = field.value.toLowerCase();
-        this.filters[fieldIndex] = filterValue;
+      field.addEventListener(
+        "keypress",
+        /**
+         * @param {KeyboardEvent} e
+         */
+        (e) => {
+          // Since we render the whole table we can't filter until enter is pressed
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
+          const filterValue = field.value.toLowerCase();
+          this.filters[fieldIndex] = filterValue;
 
-        // Filter the data array based on the input value
-        const filteredData = this.dataArray.filter((row) => {
-          return String(row[fieldIndex]).toLowerCase().includes(filterValue);
-        });
+          // Filter the data array based on the input value
+          const filteredData = this.dataArray.filter((row) => {
+            return String(row[fieldIndex]).toLowerCase().includes(filterValue);
+          });
 
-        // Update the table with filtered data
-        this.renderTable(filteredData);
-      });
+          // Update the table with filtered data
+          this.renderTable(filteredData);
+        },
+      );
     });
 
     // Checkbox fields
-    const inputFields = this.shadowRoot.querySelectorAll("td input");
-    inputFields.forEach((field) => {
-      field.addEventListener("change", (e) => {
-        const el = e.target;
-        const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
-        const dataIndex = parseInt(field.getAttribute("dataIndex"));
-        const column = this.columns[fieldIndex];
-        if (el.type === "checkbox") {
-          this.dataArray[dataIndex][fieldIndex] = field.checked;
-        } else {
-          const value = field.value;
-          if (column.type === "number" && isNaN(value)) return alert("Invalid number");
-          if (column.type === "date" && !new Date(value)) return alert("Invalid date");
-          this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column.type);
-        }
-        this.saveToStorage();
-        // this.renderTable();
-      });
-    });
+    const inputFields = /** @type {NodeListOf<HTMLInputElement>} */ (this.shadowRoot.querySelectorAll("td input"));
+    inputFields.forEach(
+      /**
+       * @param {HTMLInputElement} field
+       */
+      (field) => {
+        field.addEventListener(
+          "change",
+          /**
+           * @param {Event} e
+           */
+          (e) => {
+            const el = /** @type {HTMLInputElement} */ (e.target);
+            const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
+            const dataIndex = parseInt(field.getAttribute("dataIndex"));
+            const column = this.columns[fieldIndex];
+            if (el.type === "checkbox") {
+              this.dataArray[dataIndex][fieldIndex] = field.checked;
+            } else {
+              const value = field.value;
+              if (column.type === "number" && isNaN(parseFloat(value))) return alert("Invalid number");
+              if (column.type === "date" && !new Date(value)) return alert("Invalid date");
+              this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column.type);
+            }
+            this.saveToStorage();
+            // this.renderTable();
+          },
+        );
+      },
+    );
 
     // Header click for sorting
     const headers = this.shadowRoot.querySelectorAll("th:not(:last-child)");
     headers.forEach((header) => {
       header.addEventListener("click", (e) => {
         // Suppress click on column name or dblclick event is not fired
-        if (e.target.classList.contains("column-name")) return;
+        let el = /** @type {HTMLElement} */ (e.target);
+        if (el.classList.contains("column-name")) return;
 
         const columnIndex = parseInt(header.getAttribute("data-index"));
 
@@ -610,8 +626,8 @@ export class DataEntryTable extends HTMLElement {
 
     try {
       window.store.set(this.storageKey, dataToSave);
-    } catch (error) {
-      alert("Data could not be persisted: " + error.message);
+    } catch (e) {
+      if (e instanceof Error) alert("Data could not be persisted: " + e.message);
     }
   }
 
@@ -619,7 +635,7 @@ export class DataEntryTable extends HTMLElement {
   loadFromStorage() {
     try {
       // Load saved data
-      const savedData = window.store.get(this.storageKey);
+      const savedData = /** @type {any} */ (window.store.get(this.storageKey));
       if (savedData) {
         const savedState = savedData;
         this.dataArray = savedState.dataArray;
@@ -629,8 +645,8 @@ export class DataEntryTable extends HTMLElement {
         this.sortDirection = savedState.sortDirection || "asc";
         this.filters = new Array(this.columns.length).fill("");
       }
-    } catch (error) {
-      console.error("Data could not be loaded: " + error.message);
+    } catch (e) {
+      if (e instanceof Error) console.error("Data could not be loaded: " + e.message);
     }
   }
 

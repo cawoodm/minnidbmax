@@ -9,7 +9,7 @@ export function DataStore(prefix) {
         .map(([key, value]) => [key.replace(prefix, ""), JSON.parse(value)]);
     },
     // Get contents of item
-    get(key) {
+    get(key, defaultValue) {
       if (!key) throw new Error("Store.get failed: Key is required");
       let value = localStorage.getItem(prefix + key);
       try {

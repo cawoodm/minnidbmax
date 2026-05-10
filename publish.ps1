@@ -14,6 +14,9 @@ function main() {
 
   Push-Location $targetDir
   $msg = $msg -replace "$($ver):", ""
+  write-host "***************************************************" -ForegroundColor Cyan
+  write-host "                v$($ver): $msg" -ForegroundColor Cyan
+  write-host "***************************************************" -ForegroundColor Cyan
   git add . && git commit -a -m "MinniDBMax App $($ver): $msg" && git push
   Pop-Location
 

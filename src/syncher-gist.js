@@ -1,3 +1,5 @@
+/* global store */
+
 // https://gist.github.com/cawoodm
 // Create fine-grained token with gist scope: https://github.com/settings/apps
 

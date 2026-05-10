@@ -11,7 +11,12 @@
     "publish": "pwsh -File ./publish.ps1"
   },
   "devDependencies": {
+    "@types/winbox": "^0.2.6",
     "prettier-eslint": "^16.3.0",
+    "typescript": "^5.8.3",
     "vite": "^6.2.0"
+  },
+  "dependencies": {
+    "winbox": "^0.2.82"
   }
 }
