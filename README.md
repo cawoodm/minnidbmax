@@ -25,6 +25,13 @@ This aids with proper sorting.
 Click filter to filter columns, enter a search term and press enter:  
 ![Filtering](./docs/screenshot_filter.png)
 
+### Column Types
+* Data identified as boolean will be rendered as a checkbox
+* Data which looks like an HTML color (e.g. "#FF0000") will be rendered as a color swatch
+* Data which looks like an HTML image (e.g. "data:image/png;base64,iVBO...") will be rendered as an image
+* Data identified as numbers will be sorted numerically
+
+
 ### Other:
 
 * Double click a column label to rename it.

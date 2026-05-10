@@ -56,6 +56,12 @@ export class DataEntryTable extends HTMLElement {
     // Initialize data
     this.loadFromStorage();
 
+    // Hide the import textarea by default once the table has data;
+    // empty tables keep it visible so the user can populate the first row.
+    if (this.dataArray.length > 0) {
+      this.shadowRoot.querySelector(".input-container").classList.add("hide");
+    }
+
     this.renderTable();
 
     this.saveToStorage();

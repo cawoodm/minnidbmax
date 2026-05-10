@@ -168,19 +168,19 @@ function createTable(code, data) {
   });
   win.addControl({
     class: "wb-full",
-    image: "icon-data-input.svg",
-    click: function (event, winbox) {
-      newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
-      (newTable.shadowRoot.querySelector(".input-container textarea") as HTMLTextAreaElement).focus();
-    },
-  });
-  win.addControl({
-    class: "wb-full",
     image: "icon-download-outline.svg",
     click: function (event, winbox) {
       const csvData = newTable.exportDataCSV();
       downloadFile(code + ".csv", csvData);
       this.classList.toggle("active");
+    },
+  });
+  win.addControl({
+    class: "wb-full",
+    image: "icon-data-input.svg",
+    click: function (event, winbox) {
+      newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
+      (newTable.shadowRoot.querySelector(".input-container textarea") as HTMLTextAreaElement).focus();
     },
   });
   if (data?.elementRect) {
