@@ -19,7 +19,16 @@ export class DataEntryTable extends HTMLElement {
     this.elementRect = {};
     this.sortColumn = -1;
     this.sortDirection = "asc";
+    // Virtualization state
+    this._rowHeight = 40; // estimate; refined post-render
+    this._scrollAttached = false;
+    this._scrollRaf = null;
+    this._resizeRaf = null;
+    this._displayData = null;
+    this._originalIndexMap = null;
   }
+
+  static VIRTUALIZE_THRESHOLD = 1000;
 
   // When component is added to the DOM
   connectedCallback() {
@@ -78,6 +87,15 @@ export class DataEntryTable extends HTMLElement {
     this.elementRect.width = w;
     this.elementRect.height = h;
     this.saveToStorage();
+    // Re-render visible slice (rAF-throttled) — viewport height changed
+    if (this._displayData && this._displayData.length > DataEntryTable.VIRTUALIZE_THRESHOLD && this.tableContainer) {
+      if (this._resizeRaf) return;
+      this._resizeRaf = requestAnimationFrame(() => {
+        this._resizeRaf = null;
+        this.tableContainer.innerHTML = this._buildTableHTML();
+        this.addTableEventListeners();
+      });
+    }
   }
   movedCallback(x, y) {
     this.elementRect.x = x;
@@ -315,97 +333,250 @@ export class DataEntryTable extends HTMLElement {
   renderTable(displayData) {
     displayData = displayData || [...this.dataArray];
 
-    let tableHTML = "<table>";
+    // For large datasets, precompute a row→index map so the per-row originalIndex
+    // lookup below is O(1) instead of O(n) with JSON.stringify (was O(n²) overall).
+    // Filter/sort preserve row identity, so reference equality is safe here.
+    let originalIndexMap = new Map();
+    for (let i = 0; i < this.dataArray.length; i++) originalIndexMap.set(this.dataArray[i], i);
 
-    // Header row with column names
-    tableHTML += "<thead><tr>";
-    this.columns.forEach((col, index) => {
-      let name = col.name;
-      const dataType = col.type;
-      let classNames = [dataType];
-      if (this.sortColumn === index) classNames.push(this.sortDirection);
-      tableHTML += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${name}</span></th>`;
-    });
-    tableHTML += "<th class=actions>+</th></tr></thead>";
-
-    // Table body
-    tableHTML += "<tbody>";
-
-    // Sort data if needed
+    // Sort full displayData (cheap relative to render; needed before slicing)
     if (this.sortColumn !== -1) {
+      const sortColumn = this.sortColumn;
+      const sortDirection = this.sortDirection;
+      const colType = this.columns[sortColumn].type;
       displayData.sort((a, b) => {
-        const valueA = a[this.sortColumn];
-        const valueB = b[this.sortColumn];
-
-        // Handle different types
-        if (this.columns[this.sortColumn].type === "date") {
+        const valueA = a[sortColumn];
+        const valueB = b[sortColumn];
+        if (colType === "date") {
           const dateA = new Date(valueA);
           const dateB = new Date(valueB);
-          return this.sortDirection === "asc" ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
-        } else if (this.columns[this.sortColumn].type === "number") {
-          return this.sortDirection === "asc" ? valueA - valueB : valueB - valueA;
+          return sortDirection === "asc" ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
+        } else if (colType === "number") {
+          return sortDirection === "asc" ? valueA - valueB : valueB - valueA;
         } else {
-          // String comparison
           const strA = String(valueA).toLowerCase();
           const strB = String(valueB).toLowerCase();
-          if (this.sortDirection === "asc") {
-            return strA.localeCompare(strB);
-          } else {
-            return strB.localeCompare(strA);
-          }
+          return sortDirection === "asc" ? strA.localeCompare(strB) : strB.localeCompare(strA);
         }
       });
     }
 
-    tableHTML +=
+    // Cache for scroll/resize re-renders (avoid re-sorting)
+    this._displayData = displayData;
+    this._originalIndexMap = originalIndexMap;
+
+    this.tableContainer.innerHTML = this._buildTableHTML();
+    this.addTableEventListeners();
+    this._ensureScrollHandler();
+
+    // Refine row-height estimate from a real rendered row, then re-render once
+    // if the actual height differs meaningfully from the estimate.
+    if (displayData.length > 0) {
+      const sample = this.tableContainer.querySelector("tbody tr.data-row");
+      if (sample && sample.offsetHeight > 0) {
+        const measured = sample.offsetHeight;
+        if (Math.abs(measured - this._rowHeight) > 2) {
+          this._rowHeight = measured;
+          this.tableContainer.innerHTML = this._buildTableHTML();
+          this.addTableEventListeners();
+        }
+      }
+    }
+
+    this.dispatchEvent(
+      new CustomEvent("row-count-changed", {
+        detail: { count: displayData.length, total: this.dataArray.length },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  _buildTableHTML() {
+    const total = this._displayData.length;
+    const useVirtual = total > DataEntryTable.VIRTUALIZE_THRESHOLD;
+    const colSpan = this.columns.length + 1;
+
+    let firstVisible = 0;
+    let lastVisible = total;
+    if (useVirtual) {
+      const scrollTop = this.tableContainer.scrollTop;
+      const viewportH = this.tableContainer.clientHeight || 400;
+      const buffer = 10;
+      firstVisible = Math.max(0, Math.floor(scrollTop / this._rowHeight) - buffer);
+      lastVisible = Math.min(total, Math.ceil((scrollTop + viewportH) / this._rowHeight) + buffer);
+    }
+
+    let html = "<table><thead><tr>";
+    this.columns.forEach((col, index) => {
+      const dataType = col.type;
+      const classNames = [dataType];
+      if (this.sortColumn === index) classNames.push(this.sortDirection);
+      html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span></th>`;
+    });
+    html += "<th class=actions>+</th></tr></thead><tbody>";
+
+    html +=
       `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}">` +
       this.columns.map((col, index) => `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index]}"/></td>`).join(" ") +
-      "<td></td></tr>"; // Display rows
-    displayData.forEach((row, rowIndex) => {
-      const originalIndex = this.dataArray.findIndex((r) => JSON.stringify(r) === JSON.stringify(row));
-      tableHTML += "<tr>";
-      row.forEach((cell, cellIndex) => {
-        let displayValue = cell;
-        const column = this.columns[cellIndex];
-        const dataType = column.type;
-        let classNames = [dataType];
-        if (cell === null) {
-          displayValue = ""; // (non-strict)
-          classNames.push("null");
-        }
-        // Format display value based on type
-        if (dataType === "boolean") {
-          displayValue = `<input type='checkbox' ${cell && "checked"} dataIndex="${originalIndex}" fieldIndex="${cellIndex}">`;
-        } else if (dataType === "date") {
-          try {
-            displayValue = new Date(cell).toISOString().split("T")[0];
-          } catch (e) {
-            // displayValue = new Date(cell).toLocaleDateString();
-            console.warn("Invalid date", cell, "in row", rowIndex + 1, "column", cellIndex + 1, row.join(", "));
-          }
-          displayValue = `<input type="date" class="dataInput" dataIndex="${originalIndex}" fieldIndex="${cellIndex}" value="${displayValue}">`;
-        } else if (dataType === "string" && displayValue.match(/^#[0-9A-F]{6}$/i)) {
-          displayValue = `<div style="width: 20px; height: 20px; border:1px solid silver; background-color: ${cell};"></div>`;
-        } else {
-          displayValue = `<input class="dataInput" dataIndex="${originalIndex}" fieldIndex="${cellIndex}" value="${displayValue}">`;
-        }
+      "<td></td></tr>";
 
-        tableHTML += `<td class="${classNames.join(" ")}">${displayValue}</td>`;
-      });
-      tableHTML += `<td class=actions><button class="delete-btn" data-index="${originalIndex}">&nbsp;</button></td>`;
-      tableHTML += "</tr>";
-    });
-
-    if (displayData.length === 0) {
-      tableHTML += '<tr><td colspan="50" id="emptyDrag">Enter your first data row to establish columns and data types.</td></tr>';
+    if (firstVisible > 0) {
+      html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${firstVisible * this._rowHeight}px"></td></tr>`;
     }
 
-    tableHTML += "</tbody></table>";
+    for (let i = firstVisible; i < lastVisible; i++) {
+      const row = this._displayData[i];
+      const originalIndex = this._originalIndexMap ? (this._originalIndexMap.get(row) ?? -1) : this.dataArray.findIndex((r) => JSON.stringify(r) === JSON.stringify(row));
+      html += this._buildRowHTML(row, originalIndex);
+    }
 
-    this.tableContainer.innerHTML = tableHTML;
+    if (lastVisible < total) {
+      html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${(total - lastVisible) * this._rowHeight}px"></td></tr>`;
+    }
 
-    // Add event listeners for sorting and deletion
-    this.addTableEventListeners();
+    if (total === 0) {
+      html += '<tr><td colspan="50" id="emptyDrag">Enter your first data row to establish columns and data types.</td></tr>';
+    }
+
+    html += "</tbody></table>";
+    return html;
+  }
+
+  _buildRowHTML(row, originalIndex) {
+    let html = '<tr class="data-row">';
+    row.forEach((cell, cellIndex) => {
+      const column = this.columns[cellIndex];
+      const dataType = column.type;
+      const classNames = [dataType];
+      const isNull = cell === null;
+      if (isNull) classNames.push("null");
+
+      let cellInner;
+      if (dataType === "boolean") {
+        cellInner = `<input type="checkbox" class="dataInput" ${cell ? "checked" : ""} dataIndex="${originalIndex}" fieldIndex="${cellIndex}">`;
+      } else if (dataType === "string" && !isNull && typeof cell === "string" && cell.match(/^#[0-9A-F]{6}$/i)) {
+        cellInner = `<div style="width: 20px; height: 20px; border:1px solid silver; background-color: ${this._escapeHTML(cell)};"></div>`;
+      } else {
+        // Click-to-edit text cell — input is created on demand in _activateCell
+        classNames.push("editable");
+        cellInner = this._escapeHTML(this._formatCellText(cell, dataType));
+      }
+      html += `<td class="${classNames.join(" ")}" dataIndex="${originalIndex}" fieldIndex="${cellIndex}">${cellInner}</td>`;
+    });
+    html += `<td class=actions><button class="delete-btn" data-index="${originalIndex}">&nbsp;</button></td>`;
+    html += "</tr>";
+    return html;
+  }
+
+  _escapeHTML(s) {
+    if (s === null || s === undefined) return "";
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  }
+
+  _formatCellText(value, dataType) {
+    if (value === null || value === undefined) return "";
+    if (dataType === "date") {
+      try {
+        return new Date(value).toISOString().split("T")[0];
+      } catch (e) {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  _activateCell(td) {
+    if (td.querySelector("input")) return; // already editing
+    const dataIndex = parseInt(td.getAttribute("dataIndex"));
+    const fieldIndex = parseInt(td.getAttribute("fieldIndex"));
+    if (isNaN(dataIndex) || isNaN(fieldIndex)) return;
+    if (!this.dataArray[dataIndex]) return;
+    const column = this.columns[fieldIndex];
+    const value = this.dataArray[dataIndex][fieldIndex];
+
+    const input = document.createElement("input");
+    input.className = "dataInput";
+    if (column.type === "date") {
+      input.type = "date";
+      if (value !== null) {
+        try {
+          input.value = new Date(value).toISOString().split("T")[0];
+        } catch (e) {
+          input.value = "";
+        }
+      }
+    } else {
+      input.type = "text";
+      input.value = value === null ? "" : String(value);
+    }
+    input.setAttribute("dataIndex", String(dataIndex));
+    input.setAttribute("fieldIndex", String(fieldIndex));
+
+    td.textContent = "";
+    td.appendChild(input);
+    input.focus();
+    if (typeof input.select === "function") input.select();
+
+    let done = false;
+    const finish = (cancel) => {
+      if (done) return;
+      done = true;
+      if (!cancel) {
+        const newValue = input.value;
+        if (column.type === "number" && newValue !== "" && isNaN(parseFloat(newValue))) {
+          done = false;
+          alert("Invalid number");
+          input.focus();
+          return;
+        }
+        if (column.type === "date" && newValue !== "" && isNaN(new Date(newValue).getTime())) {
+          done = false;
+          alert("Invalid date");
+          input.focus();
+          return;
+        }
+        this.dataArray[dataIndex][fieldIndex] = newValue === "" && column.type !== "string" ? null : this.serializeToDB(newValue, column.type);
+        this.saveToStorage();
+      }
+      this._deactivateCell(td, dataIndex, fieldIndex);
+    };
+
+    input.addEventListener("blur", () => finish(false));
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        finish(false);
+      } else if (e.key === "Escape") {
+        finish(true);
+      }
+    });
+  }
+
+  _deactivateCell(td, dataIndex, fieldIndex) {
+    const value = this.dataArray[dataIndex][fieldIndex];
+    const column = this.columns[fieldIndex];
+    td.classList.toggle("null", value === null);
+    td.textContent = this._formatCellText(value, column.type);
+  }
+
+  _ensureScrollHandler() {
+    if (this._scrollAttached) return;
+    this._scrollAttached = true;
+    this.tableContainer.addEventListener("scroll", () => {
+      if (this._scrollRaf) return;
+      this._scrollRaf = requestAnimationFrame(() => {
+        this._scrollRaf = null;
+        if (!this._displayData || this._displayData.length <= DataEntryTable.VIRTUALIZE_THRESHOLD) return;
+        // Commit any active cell edit before the rebuild so the user's value isn't lost.
+        const active = this.shadowRoot.activeElement;
+        if (active && active.tagName === "INPUT" && active.classList.contains("dataInput")) {
+          active.blur();
+        }
+        this.tableContainer.innerHTML = this._buildTableHTML();
+        this.addTableEventListeners();
+      });
+    });
   }
 
   // Add event listeners to table elements
@@ -424,12 +595,12 @@ export class DataEntryTable extends HTMLElement {
           if (e.key !== "Enter") return;
           e.preventDefault();
           const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
-          const filterValue = field.value.toLowerCase();
+          const filterValue = field.value.trim();
           this.filters[fieldIndex] = filterValue;
 
           // Filter the data array based on the input value
           const filteredData = this.dataArray.filter((row) => {
-            return String(row[fieldIndex]).toLowerCase().includes(filterValue);
+            return String(row[fieldIndex]).toLowerCase().includes(filterValue.toLowerCase());
           });
 
           // Update the table with filtered data
@@ -438,8 +609,17 @@ export class DataEntryTable extends HTMLElement {
       );
     });
 
-    // Checkbox fields
-    const inputFields = /** @type {NodeListOf<HTMLInputElement>} */ (this.shadowRoot.querySelectorAll("td input"));
+    // Editable text/number/date cells — click swaps in an <input>
+    const editableCells = /** @type {NodeListOf<HTMLElement>} */ (this.shadowRoot.querySelectorAll("td.editable"));
+    editableCells.forEach((td) => {
+      td.addEventListener("click", () => {
+        if (td.querySelector("input")) return;
+        this._activateCell(td);
+      });
+    });
+
+    // Checkbox fields (and any always-rendered .dataInput, e.g. during active edit)
+    const inputFields = /** @type {NodeListOf<HTMLInputElement>} */ (this.shadowRoot.querySelectorAll("td input.dataInput"));
     inputFields.forEach(
       /**
        * @param {HTMLInputElement} field
@@ -461,6 +641,7 @@ export class DataEntryTable extends HTMLElement {
               const value = field.value;
               if (column.type === "number" && isNaN(parseFloat(value))) return alert("Invalid number");
               if (column.type === "date" && !new Date(value)) return alert("Invalid date");
+              if (!this.dataArray[dataIndex]) return alert(`Missing row: ${dataIndex}`);
               this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column.type);
             }
             this.saveToStorage();

@@ -24,7 +24,7 @@ import { SyncherGist } from "./syncher-gist.js";
 const gistUsername = store.get(".gist-user");
 const gistToken = store.get(".gist-token");
 const gistId = store.get(".gist-id");
-const syncher = SyncherGist(gistUsername, gistToken, gistId);
+const syncher = SyncherGist(gistUsername, gistToken, gistId, store);
 
 function syncherValidate() {
   if (!gistUsername) {
@@ -142,8 +142,9 @@ function createTable(code, data) {
   const newTable = document.createElement("data-entry-table") as DataEntryTable;
   newTable.setAttribute("storage-key", `${code}.table.json`);
   newTable.setAttribute("id", "table-" + code);
+  const baseTitle = toTitleCase(code);
   // https://github.com/nextapps-de/winbox?tab=readme-ov-file
-  let win = new WinBox(toTitleCase(code), {
+  let win = new WinBox(baseTitle, {
     mount: newTable,
     onresize: newTable.resizedCallback.bind(newTable),
     onmove: newTable.movedCallback.bind(newTable),
@@ -188,6 +189,12 @@ function createTable(code, data) {
   }
   if (data?.elementRect?.minimized) win.minimize(true);
   else if (data?.elementRect?.maximized) win.maximize(true);
+  newTable.addEventListener("row-count-changed", (e: Event) => {
+    const { count } = (e as CustomEvent).detail;
+    win.setTitle(`${baseTitle} (${count})`);
+  });
+  // Initial render fired before the listener was attached — sync the title now.
+  win.setTitle(`${baseTitle} (${newTable.dataArray.length})`);
   // TODO: Remove data reading from data table class?
   function toTitleCase(str) {
     return str.replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase());

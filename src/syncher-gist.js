@@ -5,7 +5,7 @@
 
 import { Gist } from "./gist.js";
 
-export function SyncherGist(gistUsername, gistToken, gistId) {
+export function SyncherGist(gistUsername, gistToken, gistId, store) {
   let gist = null;
 
   function validate() {

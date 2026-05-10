@@ -43,4 +43,4 @@ In order to Push/Pull data you need to [create](http://gist.github.com/) a (pref
 You will now be able to synch your data with this Gist for free on Github.
 
 ### Limitations
-* Gist files are limited to 1MB
+* Gist files are limited to 1MB [See API Reference](https://docs.github.com/en/rest/gists/gists?utm_source=chatgpt.com&apiVersion=2026-03-10#truncation) so tables above 1Mb won't be synched properly
