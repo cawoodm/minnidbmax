@@ -457,6 +457,8 @@ export class DataEntryTable extends HTMLElement {
         cellInner = `<input type="checkbox" class="dataInput" ${cell ? "checked" : ""} dataIndex="${originalIndex}" fieldIndex="${cellIndex}">`;
       } else if (dataType === "string" && !isNull && typeof cell === "string" && cell.match(/^#[0-9A-F]{6}$/i)) {
         cellInner = `<div style="width: 20px; height: 20px; border:1px solid silver; background-color: ${this._escapeHTML(cell)};"></div>`;
+      } else if (dataType === "string" && !isNull && typeof cell === "string" && cell.match(/^data:image\/.+$/i)) {
+        cellInner = `<img src="${cell}"/>`;
       } else {
         // Click-to-edit text cell — input is created on demand in _activateCell
         classNames.push("editable");
@@ -708,6 +710,7 @@ export class DataEntryTable extends HTMLElement {
         input.placeholder = "Rename: field:name:type:default:maxlength";
         input.title = input.placeholder;
         input.value = column.field + ":" + column.name + ":" + column.type + ":" + (column.default || "") + ":" + (column.max || 0);
+        input.style.minWidth = Math.max(300, input.value.length * 5) + "px";
         input.style.width = "100%";
         input.style.padding = "2px";
         input.style.boxSizing = "border-box";
