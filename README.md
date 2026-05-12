@@ -19,9 +19,23 @@ You can however start with a header line the first time you import data (before 
 ![Import Manually](./docs/screenshot-header.png)  
 Note you can specify a different label for the column from the technical field name as well as the type, default and max length:
 * `foo:Foo:number:1` Field name `foo` with label `Foo` of type `number` and default `1`
-* `sales_id:Sales Identifier:string::12` Field name `sales_id` with label `Sales Identifier` of type `string` , no default but a max length of `12`
 
-This aids with proper sorting.  
+## Data Validation
+Each field has attributes separated by `:` which are:
+1. Field Name (technical name)
+2. Field Label (displayed)
+3. Field Type
+4. Default value
+5. Max length of field (for strings)
+6. Flags:
+  * unique: Ensure the value in this field is unique in the table
+  * notnull: Ensure the value is never empty in this field in the table
+
+By defining attributes on a field we can control what kind of data will appear in that field.
+* `sales_id::string::12` Field name `sales_id` is of type `string` , and a max length of `12`
+* `id::number:::unique,notnull` Field `id` is of type `number`, must be unique and may not be empty (a primary key)
+
+Setting number explicitly aids with proper sorting and data validation:
 ![Sorting](./docs/screenshot_sorting.png)
 
 Click filter to filter columns, enter a search term and press enter:  

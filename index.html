@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link type="image/png" sizes="96x96" rel="icon" href="favicon.png" />
-    <title>MinniDBMax v0.0.13</title>
+    <title>MinniDBMax v0.0.14</title>
   </head>
   <body>
     <select id="workspaceSelect"></select>
@@ -12,6 +12,28 @@
     <button id="dataPush">⬆️ Push Data</button>
     <button id="dataPull">⬇️ Pull Data</button>
     <button id="dataDump">🗃️ Dump Data</button>
+
+    <style>
+      #empty-state {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        padding: 40px 60px;
+        border: 4px dotted #888;
+        border-radius: 8px;
+        color: #666;
+        font-family: Arial, sans-serif;
+        font-size: 18px;
+        background: rgba(255, 255, 255, 0.6);
+        pointer-events: none;
+        text-align: center;
+      }
+      #empty-state.hide {
+        display: none;
+      }
+    </style>
+    <div id="empty-state" class="hide">drag and drop a .csv file here to begin...</div>
 
     <template id="data-entry-template">
       <style>
@@ -168,6 +190,13 @@
         }
         .column-name {
           cursor: text;
+        }
+        .key-indicator {
+          margin-left: 6px;
+          font-size: 0.85em;
+          color: #777;
+          font-weight: bold;
+          vertical-align: middle;
         }
         .empty-message {
           padding: 15px;

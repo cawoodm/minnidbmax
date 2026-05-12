@@ -13,7 +13,7 @@ Grouped by day, derived from full git history. Most recent first.
 - Replaced inline alert boxes with **jsPanel `hint` notifications** (top-right, colour-coded).
 - **Persisted window z-order** across reloads so the last-on-top window stays on top.
 - **Per-row "⋯" ellipsis** appears on hover at the start of each row → opens a jsPanel context menu with "Delete row" (replaces the old per-row delete button column).
-- General UI polish (v0.0.13).
+- Unique non-null fields (primary keys) (v0.0.14).
 
 ## 2026-05-10
 

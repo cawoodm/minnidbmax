@@ -226,11 +226,15 @@ function createTable(code, data) {
     newTable.zIndexChangedCallback(++frontRank);
   };
   const onClosed = (e: Event) => {
-    if ((e as any).panel !== panel) return;
+    // jspanelclosed (unlike resize/drag/fronted) does NOT carry an `.panel` reference;
+    // filter via detail (panel id) — see jspanel.js:2466-2481 for the bulk-assign list.
+    if ((e as CustomEvent).detail !== panel.id) return;
     document.removeEventListener("jspanelresize", onResize);
     document.removeEventListener("jspaneldragstop", onDragStop);
     document.removeEventListener("jspanelfronted", onFronted);
     document.removeEventListener("jspanelclosed", onClosed);
+    // jsPanel may still have the element in the DOM when this fires; defer past the current tick.
+    setTimeout(updateEmptyState, 0);
   };
   document.addEventListener("jspanelresize", onResize);
   document.addEventListener("jspaneldragstop", onDragStop);
@@ -238,6 +242,7 @@ function createTable(code, data) {
   document.addEventListener("jspanelclosed", onClosed);
   // Seed an initial rank so newly created (unclicked) panels are still ordered above older ones on next reload.
   newTable.zIndexChangedCallback(++frontRank);
+  updateEmptyState();
 
   if (rect?.minimized) panel.minimize();
   else if (rect?.maximized) panel.maximize();
@@ -417,6 +422,14 @@ function displayTables() {
       el.refresh();
     }
   });
+  updateEmptyState();
+}
+
+function updateEmptyState() {
+  const el = document.getElementById("empty-state");
+  if (!el) return;
+  const hasPanels = document.querySelectorAll(".jsPanel-standard").length > 0;
+  el.classList.toggle("hide", hasPanels);
 }
 // Example of how to interact with the component programmatically
 document.addEventListener("DOMContentLoaded", function () {

@@ -369,18 +369,42 @@ export class DataEntryTable extends HTMLElement {
         default: null,
         max: 0,
         dateFormat: null,
+        isUnique: false,
+        isNotNull: false,
       };
       if (headers) {
-        const fieldMeta = (headers[index] + "::::").split(":");
+        const fieldMeta = (headers[index] + ":::::").split(":");
         if (fieldMeta[0]) col.field = fieldMeta[0];
         if (fieldMeta[1]) col.name = fieldMeta[1];
         if (fieldMeta[2]) col.type = fieldMeta[2];
         if (fieldMeta[3]) col.default = fieldMeta[3];
         if (fieldMeta[4]) col.max = parseInt(fieldMeta[4]);
+        if (fieldMeta[5]) {
+          const flags = this._parseColumnFlags(fieldMeta[5]);
+          col.isUnique = flags.isUnique;
+          col.isNotNull = flags.isNotNull;
+        }
       }
       return col;
     });
     this.filters = new Array(this.columns.length).fill("");
+  }
+
+  // Parse the comma-separated flags segment of the column mini-language.
+  // Recognized tokens: "unique", "notnull". Unknown tokens warn and are ignored.
+  _parseColumnFlags(segment) {
+    const tokens = String(segment || "")
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    const recognized = new Set(["unique", "notnull"]);
+    for (const t of tokens) {
+      if (!recognized.has(t)) console.warn(`Unknown column flag: "${t}"`);
+    }
+    return {
+      isUnique: tokens.includes("unique"),
+      isNotNull: tokens.includes("notnull"),
+    };
   }
 
   setDefaults(values) {
@@ -423,10 +447,61 @@ export class DataEntryTable extends HTMLElement {
     if (len > column.max) throw new ValidationError(`Column ${column.name || column.field} "${value}" exceeds max length ${column.max} (was ${len})!`);
   }
 
+  // Check unique/notnull constraints against the current dataArray.
+  // values: serialized row to validate. excludeIndex: row to skip (the row being edited).
+  // Throws ValidationError on first violation.
+  _checkKeyConstraints(values, excludeIndex = -1) {
+    for (let colIdx = 0; colIdx < this.columns.length; colIdx++) {
+      const col = this.columns[colIdx];
+      if (!col.isUnique && !col.isNotNull) continue;
+
+      const v = values[colIdx];
+      const isEmpty = v === null || v === undefined || v === "";
+
+      if (col.isNotNull && isEmpty) {
+        throw new ValidationError(`Column "${col.name}" cannot be empty`);
+      }
+
+      // SQL semantics: NULLs are distinct in unique constraints, so skip empty here.
+      if (col.isUnique && !isEmpty) {
+        for (let rowIdx = 0; rowIdx < this.dataArray.length; rowIdx++) {
+          if (rowIdx === excludeIndex) continue;
+          if (this.dataArray[rowIdx][colIdx] === v) {
+            throw new ValidationError(`Column "${col.name}" duplicate value: ${v}`);
+          }
+        }
+      }
+    }
+  }
+
+  // Pre-flight scan when a constraint is being enabled on an existing column.
+  // Returns a human-readable violation summary, or null if clean.
+  _scanConstraintViolations(colIdx, checkUnique, checkNotNull) {
+    let emptyCount = 0;
+    let dupCount = 0;
+    const seen = new Map();
+    for (let i = 0; i < this.dataArray.length; i++) {
+      const v = this.dataArray[i][colIdx];
+      const isEmpty = v === null || v === undefined || v === "";
+      if (checkNotNull && isEmpty) emptyCount++;
+      if (checkUnique && !isEmpty) {
+        const count = (seen.get(v) || 0) + 1;
+        seen.set(v, count);
+        if (count === 2) dupCount++; // distinct values that have at least one duplicate
+      }
+    }
+    if (!emptyCount && !dupCount) return null;
+    const parts = [];
+    if (emptyCount) parts.push(`${emptyCount} empty value${emptyCount > 1 ? "s" : ""}`);
+    if (dupCount) parts.push(`${dupCount} duplicate value${dupCount > 1 ? "s" : ""}`);
+    return parts.join(", ");
+  }
+
   // Add data row to array
   addDataRow(values) {
     // Format values according to their types
     const formattedValues = values.map((val, index) => this.serializeToDB(val, this.columns[index]));
+    this._checkKeyConstraints(formattedValues, -1);
     this.dataArray.push(formattedValues);
     return true;
   }
@@ -497,7 +572,7 @@ export class DataEntryTable extends HTMLElement {
   _buildTableHTML() {
     const total = this._displayData.length;
     const useVirtual = total > DataEntryTable.VIRTUALIZE_THRESHOLD;
-    const colSpan = this.columns.length + 1;
+    const colSpan = this.columns.length + 2;
 
     let firstVisible = 0;
     let lastVisible = total;
@@ -514,14 +589,25 @@ export class DataEntryTable extends HTMLElement {
       const dataType = col.type;
       const classNames = [dataType];
       if (this.sortColumn === index) classNames.push(this.sortDirection);
-      html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span></th>`;
+      const flagSyms = [];
+      const flagTitles = [];
+      if (col.isUnique) {
+        flagSyms.push("🔑");
+        flagTitles.push("Unique");
+      }
+      if (col.isNotNull) {
+        flagSyms.push("!");
+        flagTitles.push("Not null");
+      }
+      const keyIcon = flagSyms.length ? `<span class="key-indicator" title="${flagTitles.join(", ")}">${flagSyms.join("")}</span>` : "";
+      html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}</th>`;
     });
-    html += "</tr></thead><tbody>";
+    html += '<th class="add-column" title="Add new column">+</th></tr></thead><tbody>';
 
     html +=
       `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}"><td></td>` +
       this.columns.map((col, index) => `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index]}"/></td>`).join(" ") +
-      "</tr>";
+      "<td></td></tr>";
 
     if (firstVisible > 0) {
       html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${firstVisible * this._rowHeight}px"></td></tr>`;
@@ -564,7 +650,7 @@ export class DataEntryTable extends HTMLElement {
       }
       html += `<td class="${classNames.join(" ")}" dataIndex="${originalIndex}" fieldIndex="${cellIndex}">${cellInner}</td>`;
     });
-    html += "</tr>";
+    html += "<td></td></tr>";
     return html;
   }
 
@@ -649,7 +735,19 @@ export class DataEntryTable extends HTMLElement {
             return;
           }
         }
-        this.dataArray[dataIndex][fieldIndex] = newValue === "" && column.type !== "string" ? null : this.serializeToDB(newValue, column);
+        const serializedValue = newValue === "" && column.type !== "string" ? null : this.serializeToDB(newValue, column);
+        const candidate = [...this.dataArray[dataIndex]];
+        candidate[fieldIndex] = serializedValue;
+        try {
+          this._checkKeyConstraints(candidate, dataIndex);
+        } catch (e) {
+          if (!(e instanceof ValidationError)) throw e;
+          done = false;
+          this.showAlert(e.message, "error");
+          input.focus();
+          return;
+        }
+        this.dataArray[dataIndex][fieldIndex] = serializedValue;
         this.saveToStorage();
       }
       this._deactivateCell(td, dataIndex, fieldIndex);
@@ -754,7 +852,20 @@ export class DataEntryTable extends HTMLElement {
             const dataIndex = parseInt(field.getAttribute("dataIndex"));
             const column = this.columns[fieldIndex];
             if (el.type === "checkbox") {
-              this.dataArray[dataIndex][fieldIndex] = field.checked;
+              const newVal = field.checked;
+              if (column.isUnique || column.isNotNull) {
+                const candidate = [...this.dataArray[dataIndex]];
+                candidate[fieldIndex] = newVal;
+                try {
+                  this._checkKeyConstraints(candidate, dataIndex);
+                } catch (err) {
+                  if (!(err instanceof ValidationError)) throw err;
+                  field.checked = !newVal; // revert visual state
+                  this.showAlert(err.message, "error");
+                  return;
+                }
+              }
+              this.dataArray[dataIndex][fieldIndex] = newVal;
             } else {
               const value = field.value;
               if (column.type === "number" && isNaN(parseFloat(value))) return alert("Invalid number");
@@ -769,8 +880,8 @@ export class DataEntryTable extends HTMLElement {
       },
     );
 
-    // Header click for sorting
-    const headers = this.shadowRoot.querySelectorAll("th:not(:last-child)");
+    // Header click for sorting (only data-column headers, not the row-actions gutter or the + add-column)
+    const headers = this.shadowRoot.querySelectorAll("th[data-index]");
     headers.forEach((header) => {
       header.addEventListener("click", (e) => {
         // Suppress click on column name or dblclick event is not fired
@@ -794,18 +905,25 @@ export class DataEntryTable extends HTMLElement {
         this.renderTable();
       });
     });
-    this.shadowRoot.querySelector("th:last-child").addEventListener("click", (e) => {
-      let f = prompt("Enter new column (field:name:type:default)");
+    this.shadowRoot.querySelector("th.add-column").addEventListener("click", (e) => {
+      let f = prompt("Enter new column (field:name:type:default:max:flags)");
       if (!f) return;
-      let fieldMeta = (f + ":::").split(":");
+      let fieldMeta = (f + ":::::").split(":");
       let field = fieldMeta[0];
       let name = fieldMeta[1] || this._toTitleCase(field);
       let defaultValue = fieldMeta[3];
-      let type = fieldMeta[2] || this.detectType(defaultValue);
-      defaultValue = this.serializeToDB(defaultValue, { type, dateFormat: DEFAULT_DATE_FORMAT });
-      this.columns.push({ field, name, type });
+      let type = fieldMeta[2] || this.detectType(defaultValue || "");
+      let max = parseInt(fieldMeta[4]) || 0;
+      const flags = this._parseColumnFlags(fieldMeta[5] || "");
+      const serializedDefault = this.serializeToDB(defaultValue, { type, dateFormat: DEFAULT_DATE_FORMAT });
+      // notnull on a new column with no default would instantly violate existing rows — refuse.
+      if (flags.isNotNull && (serializedDefault === null || serializedDefault === "") && this.dataArray.length > 0) {
+        this.showAlert(`Cannot add "${name}" as not-null: ${this.dataArray.length} existing rows would have empty values. Provide a non-null default.`, "error");
+        return;
+      }
+      this.columns.push({ field, name, type, default: null, max, dateFormat: null, isUnique: flags.isUnique, isNotNull: flags.isNotNull });
       this.dataArray.forEach((row) => {
-        row.push(defaultValue);
+        row.push(serializedDefault);
       });
       this.saveToStorage();
       this.renderTable();
@@ -823,9 +941,12 @@ export class DataEntryTable extends HTMLElement {
         // Create an editable input
         const input = document.createElement("input");
         input.type = "text";
-        input.placeholder = "Rename: field:name:type:default:maxlength";
+        input.placeholder = "Rename: field:name:type:default:maxlength:flags";
         input.title = input.placeholder;
-        input.value = column.field + ":" + column.name + ":" + column.type + ":" + (column.default || "") + ":" + (column.max || 0);
+        const flagTokens = [];
+        if (column.isUnique) flagTokens.push("unique");
+        if (column.isNotNull) flagTokens.push("notnull");
+        input.value = column.field + ":" + column.name + ":" + column.type + ":" + (column.default || "") + ":" + (column.max || 0) + ":" + flagTokens.join(",");
         input.style.minWidth = Math.max(300, input.value.length * 5) + "px";
         input.style.width = "100%";
         input.style.padding = "2px";
@@ -930,13 +1051,32 @@ export class DataEntryTable extends HTMLElement {
     this.columns[index].name = newName.trim() || `Column ${index + 1}`;
     const fieldMeta = newName.split(":");
     if (fieldMeta.length > 1) {
-      //const fieldMeta = (newName+'::::').split(":");
-      // If newName is entered as field:name, rename the field
-      this.columns[index].field = fieldMeta[0];
-      this.columns[index].name = fieldMeta[1];
-      if (fieldMeta.length > 2) this.columns[index].type = fieldMeta[2];
-      if (fieldMeta.length > 3) this.columns[index].default = fieldMeta[3];
-      if (fieldMeta.length > 4) this.columns[index].max = parseInt(fieldMeta[4]);
+      const col = this.columns[index];
+      const prevIsUnique = !!col.isUnique;
+      const prevIsNotNull = !!col.isNotNull;
+      let nextIsUnique = prevIsUnique;
+      let nextIsNotNull = prevIsNotNull;
+      if (fieldMeta.length > 5) {
+        const flags = this._parseColumnFlags(fieldMeta[5]);
+        nextIsUnique = flags.isUnique;
+        nextIsNotNull = flags.isNotNull;
+      }
+      const enableUnique = !prevIsUnique && nextIsUnique;
+      const enableNotNull = !prevIsNotNull && nextIsNotNull;
+      if (enableUnique || enableNotNull) {
+        const violation = this._scanConstraintViolations(index, enableUnique, enableNotNull);
+        if (violation) {
+          this.showAlert(`Cannot apply constraints to "${col.name}": ${violation}. Clean the data first.`, "error");
+          return;
+        }
+      }
+      col.field = fieldMeta[0];
+      col.name = fieldMeta[1];
+      if (fieldMeta.length > 2) col.type = fieldMeta[2];
+      if (fieldMeta.length > 3) col.default = fieldMeta[3];
+      if (fieldMeta.length > 4) col.max = parseInt(fieldMeta[4]);
+      col.isUnique = nextIsUnique;
+      col.isNotNull = nextIsNotNull;
     } else if (newName.startsWith("!")) {
       // If newName is entered as !newName, rename the field
       this.columns[index].field = newName.substring(1).trim().replace(/\s+/g, "_").toLowerCase();

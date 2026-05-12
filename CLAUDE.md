@@ -43,7 +43,7 @@ Keys under the workspace prefix:
 
 ### Column metadata mini-language
 
-Throughout the UI, columns are described by the colon-delimited string `field:label:type:default:max` (e.g. `sales_id:Sales Identifier:string::12`). This format appears in three places — header-line CSV imports (`establishColumns` in `data-table.js`), the rename-column input (`saveColumnName`), and the "+ new column" prompt. If you change the format, update all three. Types: `string`, `number`, `date` (YYYY-MM-DD), `boolean`. `string` columns accept any value; other types are validated on import.
+Throughout the UI, columns are described by the colon-delimited string `field:label:type:default:max:flags` (e.g. `sales_id:Sales Identifier:string::12:unique,notnull`). This format appears in three places — header-line CSV imports (`establishColumns` in `data-table.js`), the rename-column input (`saveColumnName`), and the "+ new column" prompt. If you change the format, update all three. Types: `string`, `number`, `date` (YYYY-MM-DD), `boolean`. `string` columns accept any value; other types are validated on import. The `flags` segment is a comma-separated list — recognized tokens are `unique` (values must be distinct; nulls allowed and treated as distinct per SQL standard) and `notnull` (empty/null forbidden); combining `unique,notnull` gives primary-key semantics on any number of columns. Constraint violations throw `ValidationError` and follow the existing per-row skip-with-alert behavior in `processInput`. Enabling a flag on an existing column triggers a pre-flight scan that refuses the change if existing data would violate it.
 
 ### TS/JS mix
 
