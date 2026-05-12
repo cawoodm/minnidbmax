@@ -509,19 +509,19 @@ export class DataEntryTable extends HTMLElement {
       lastVisible = Math.min(total, Math.ceil((scrollTop + viewportH) / this._rowHeight) + buffer);
     }
 
-    let html = "<table><thead><tr>";
+    let html = '<table><thead><tr><th class="row-actions"></th>';
     this.columns.forEach((col, index) => {
       const dataType = col.type;
       const classNames = [dataType];
       if (this.sortColumn === index) classNames.push(this.sortDirection);
       html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span></th>`;
     });
-    html += "<th class=actions>+</th></tr></thead><tbody>";
+    html += "</tr></thead><tbody>";
 
     html +=
-      `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}">` +
+      `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}"><td></td>` +
       this.columns.map((col, index) => `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index]}"/></td>`).join(" ") +
-      "<td></td></tr>";
+      "</tr>";
 
     if (firstVisible > 0) {
       html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${firstVisible * this._rowHeight}px"></td></tr>`;
@@ -537,16 +537,12 @@ export class DataEntryTable extends HTMLElement {
       html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${(total - lastVisible) * this._rowHeight}px"></td></tr>`;
     }
 
-    if (total === 0) {
-      html += '<tr><td colspan="50" id="emptyDrag">Enter your first data row to establish columns and data types.</td></tr>';
-    }
-
     html += "</tbody></table>";
     return html;
   }
 
   _buildRowHTML(row, originalIndex) {
-    let html = '<tr class="data-row">';
+    let html = `<tr class="data-row"><td class="row-actions"><button class="row-menu" data-index="${originalIndex}">⋯</button></td>`;
     row.forEach((cell, cellIndex) => {
       const column = this.columns[cellIndex];
       const dataType = column.type;
@@ -568,7 +564,6 @@ export class DataEntryTable extends HTMLElement {
       }
       html += `<td class="${classNames.join(" ")}" dataIndex="${originalIndex}" fieldIndex="${cellIndex}">${cellInner}</td>`;
     });
-    html += `<td class=actions><button class="delete-btn" data-index="${originalIndex}">&nbsp;</button></td>`;
     html += "</tr>";
     return html;
   }
@@ -857,13 +852,56 @@ export class DataEntryTable extends HTMLElement {
       });
     });
 
-    // Delete buttons
-    const deleteButtons = this.shadowRoot.querySelectorAll(".delete-btn");
-    deleteButtons.forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = parseInt(button.getAttribute("data-index"));
-        this.deleteRow(index);
+    // Row-action ellipsis: opens an inline jsPanel context menu.
+    this.shadowRoot.querySelectorAll(".row-menu").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const index = parseInt(btn.getAttribute("data-index"), 10);
+        this._openRowContextMenu(e, index);
       });
+    });
+  }
+
+  _openRowContextMenu(event, rowIndex) {
+    document.querySelectorAll(".jsPanel-rowmenu").forEach((p) => p.close());
+    const items = [{ label: "Delete row", run: () => this.deleteRow(rowIndex) }];
+    jsPanel.create({
+      paneltype: "rowmenu",
+      container: "body",
+      position: false,
+      dragit: false,
+      resizeit: false,
+      header: false,
+      headerControls: "none",
+      panelSize: { width: 160, height: "auto" },
+      contentOverflow: "visible",
+      content: function (cm) {
+        // jsPanel's function-style content option discards the return value — mutate cm.content directly.
+        const wrap = document.createElement("div");
+        wrap.style.cssText = "padding:4px 0;font-family:Arial,sans-serif;";
+        for (const item of items) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = item.label;
+          b.style.cssText = "display:block;width:100%;text-align:left;background:none;border:0;padding:6px 12px;cursor:pointer;font:inherit;";
+          b.addEventListener("mouseenter", () => (b.style.background = "#f0f0f0"));
+          b.addEventListener("mouseleave", () => (b.style.background = "none"));
+          b.addEventListener("click", () => {
+            item.run();
+            cm.close();
+          });
+          wrap.appendChild(b);
+        }
+        cm.content.appendChild(wrap);
+      },
+      callback: (cm) => {
+        cm.classList.add("jsPanel-rowmenu");
+        cm.style.position = "absolute";
+        cm.style.left = event.pageX + "px";
+        cm.style.top = event.pageY + "px";
+        cm.style.zIndex = "99999";
+        cm.addEventListener("mouseleave", () => cm.close());
+      },
     });
   }
 
@@ -963,7 +1001,8 @@ export class DataEntryTable extends HTMLElement {
       headerTitle: tableName || "Notice",
       content: `<div style="padding:10px 14px;">${message}</div>`,
       theme: themeMap[type] || "info",
-      position: { my: "right-top", at: "right-top", offsetX: -20, offsetY: 20 },
+      position: "center-top 0 15 down",
+      //position: { my: "right-top", at: "right-top", offsetX: -20, offsetY: 20 },
       panelSize: { width: 320, height: "auto" },
       autoclose: 5000,
     });
