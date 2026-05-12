@@ -7,8 +7,9 @@
 
 ## DB Features
 * Implement primary/unique keys
-* Persist z-order of windows
-* Auto detect MM/DD/YYYY dates as well as DD/MM/YYYY. Convert the values to canonical YYYY-MM-DD on import/save.
+* Strict/tolerant mode for data entry
+  * In tolerant mode, invalid data is displayed but not saved/persisted and can be cleaned
+  * In strict mode, invalid data is not allowed (as today)
 * Import
   * When importing data to existing table, prompt to append, overwrite or cancel
   * Drag any csv file into window

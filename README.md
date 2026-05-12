@@ -3,6 +3,8 @@ Simple database with CSV import/export for viewing, managing structured data in 
 
 Check it out at: http://cawoodm.github.io/minnidbmax/
 
+Check out all features in the [Change Log](./CHANGELOG.md).
+
 ![Screenshot of MinniDBMax](./docs/screenshot1.png)
 
 ## How to Use
