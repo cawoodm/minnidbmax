@@ -6,8 +6,8 @@ Check it out at: http://cawoodm.github.io/minnidbmax/
 ![Screenshot of MinniDBMax](./docs/screenshot1.png)
 
 ## How to Use
-To begin, create a new table, paste (or drag and drop) some CSV data and press Enter to import.  
-![New Table](./docs/screenshot_new_table.png)
+To begin, simply drag in a .csv file.
+Alternatively create a new table, enter some CSV data and press Enter to import. 
 You can press Shift+Enter to add more than one line
 
 The first time you paste data the first row is used to infer data types (string, number, date, bool).    
@@ -39,8 +39,7 @@ Click filter to filter columns, enter a search term and press enter:
   * The first time you rename a column, the label is converted to a field name
 * Click delete icon to delete a row
 * Click the window close icon to delete a table
-* Open a new space with `?space=something`
-  * Default space is `?space=default`
+* Switch workspaces in the top left or create a new workspace
 
 ## Data Storage
 Every change is immediately stored in your browsers `localStorage`.

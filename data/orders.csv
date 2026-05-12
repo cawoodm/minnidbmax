@@ -1,0 +1,3 @@
+sales_id:Sales Identifier:string::12,item:Itm:number,date,customer_id,material,qty
+127234324334,1,2022-05-05,CUST1,MATERIAL1,12
+127234324334,2,2022-05-05,CUST1,MATERIAL2,122
