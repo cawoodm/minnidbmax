@@ -1,5 +1,7 @@
 "use strict";
 
+import { jsPanel } from "jspanel4/es6module/jspanel.js";
+
 export class DataEntryTable extends HTMLElement {
   constructor() {
     super();
@@ -40,7 +42,6 @@ export class DataEntryTable extends HTMLElement {
     this.dataInput = /** @type {!HTMLInputElement} */ (this.shadowRoot.querySelector(".input-container textarea"));
     if (!this.dataInput) throw new Error("Data input element not found in template.");
     this.tableContainer = this.shadowRoot.querySelector(".table-container");
-    this.alertBox = /** @type {any} */ (this.shadowRoot.querySelector(".alert"));
 
     //this.titleElement = this.shadowRoot.querySelector(".title");
     //if (!this.titleElement) throw new Error("Title element not found in template.");
@@ -51,7 +52,6 @@ export class DataEntryTable extends HTMLElement {
 
     // Set up event listeners
     this.dataInput.addEventListener("keypress", this.handleKeyPress);
-    this.dataInput.addEventListener("drop", this.handleDataInputDrop.bind(this));
 
     // Initialize data
     this.loadFromStorage();
@@ -67,18 +67,14 @@ export class DataEntryTable extends HTMLElement {
     this.saveToStorage();
   }
 
-  handleDataInputDrop(e) {
-    e.preventDefault();
-    if (!e.dataTransfer.files.length) return; // No files dropped
-    var file = e.dataTransfer.files[0];
-    var reader = new FileReader();
-    const dataInput = this.dataInput;
-    const processInput = this.processInput.bind(this);
-    reader.onload = function (e) {
-      dataInput.value = e.target.result.toString();
-      processInput();
-    };
-    reader.readAsText(file, "UTF-8");
+  initializeData() {
+    this.dataArray = [];
+    this.columns = [];
+    this.filters = [];
+    this.sortColumn = -1;
+    this.sortDirection = "asc";
+    this.saveToStorage();
+    this.renderTable();
   }
 
   createdCallback(options) {
@@ -844,28 +840,22 @@ export class DataEntryTable extends HTMLElement {
     }
   }
 
-  // Show alert message
+  // Show alert message via jsPanel's hint extension (top-right corner of viewport)
   showAlert(message, type = "success") {
-    this.alertBox.className = "alert " + type;
-    this.alertBox.textContent = message;
-    this.alertBox.style.display = "block";
-
-    // Hide the alert after 5 seconds
-    setTimeout(() => {
-      this.alertBox.style.display = "none";
-    }, 5000);
+    const themeMap = { success: "success", error: "danger" };
+    const tableName = (this.storageKey || "").replace(/\.table\.json$/, "");
+    jsPanel.hint.create({
+      headerTitle: tableName || "Notice",
+      content: `<div style="padding:10px 14px;">${message}</div>`,
+      theme: themeMap[type] || "info",
+      position: { my: "right-top", at: "right-top", offsetX: -20, offsetY: 20 },
+      panelSize: { width: 320, height: "auto" },
+      autoclose: 5000,
+    });
   }
 
   refresh() {
     this.loadFromStorage();
-    this.renderTable();
-  }
-
-  // Clear all data
-  clearData() {
-    this.dataArray = [];
-    this.columns = [];
-    this.saveToStorage();
     this.renderTable();
   }
 

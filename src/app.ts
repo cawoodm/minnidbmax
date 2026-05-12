@@ -1,5 +1,6 @@
 import "jspanel4/dist/jspanel.min.css";
-import { jsPanel } from "jspanel4/es6module/jspanel.min.js";
+import { jsPanel } from "jspanel4/es6module/jspanel.js";
+import "jspanel4/es6module/extensions/hint/jspanel.hint.js";
 import "material-icons/iconfont/filled.css";
 
 addEventListener("error", function (e) {
@@ -239,9 +240,61 @@ function deleteTable(table): boolean {
   return true;
 }
 
+let dropPageOverlay: HTMLDivElement | null = null;
+let dropPanelOverlay: HTMLDivElement | null = null;
+let dropDragCounter = 0;
+
+function ensureDropOverlays() {
+  if (!dropPageOverlay) {
+    dropPageOverlay = document.createElement("div");
+    dropPageOverlay.style.cssText = "position:fixed;inset:0;border:6px dotted #1976d2;box-sizing:border-box;pointer-events:none;z-index:99998;display:none;";
+    document.body.appendChild(dropPageOverlay);
+  }
+  if (!dropPanelOverlay) {
+    dropPanelOverlay = document.createElement("div");
+    dropPanelOverlay.style.cssText = "position:fixed;border:6px dotted #2e7d32;box-sizing:border-box;pointer-events:none;z-index:99999;display:none;";
+    document.body.appendChild(dropPanelOverlay);
+  }
+}
+
+function hideDropOverlays() {
+  if (dropPageOverlay) dropPageOverlay.style.display = "none";
+  if (dropPanelOverlay) dropPanelOverlay.style.display = "none";
+  dropDragCounter = 0;
+}
+
+function onPageDragenter(e: DragEvent) {
+  if (!e.dataTransfer?.types.includes("Files")) return;
+  dropDragCounter++;
+  ensureDropOverlays();
+  dropPageOverlay!.style.display = "block";
+}
+
+function onPageDragleave(e: DragEvent) {
+  if (dropDragCounter === 0) return;
+  dropDragCounter--;
+  if (dropDragCounter === 0) hideDropOverlays();
+}
+
 function onPageDragover(e: DragEvent) {
   e.preventDefault();
   if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  if (!e.dataTransfer?.types.includes("Files")) return;
+  ensureDropOverlays();
+  // Highlight the panel under the cursor (if any) instead of the whole page.
+  const panelEl = e.composedPath().find((n) => (n as Element).classList?.contains("jsPanel")) as Element | undefined;
+  if (panelEl) {
+    const r = panelEl.getBoundingClientRect();
+    dropPanelOverlay!.style.left = r.left + "px";
+    dropPanelOverlay!.style.top = r.top + "px";
+    dropPanelOverlay!.style.width = r.width + "px";
+    dropPanelOverlay!.style.height = r.height + "px";
+    dropPanelOverlay!.style.display = "block";
+    dropPageOverlay!.style.display = "none";
+  } else {
+    dropPanelOverlay!.style.display = "none";
+    dropPageOverlay!.style.display = "block";
+  }
 }
 
 function importCsvIntoTable(el: any, file: File) {
@@ -253,18 +306,52 @@ function importCsvIntoTable(el: any, file: File) {
   reader.readAsText(file, "UTF-8");
 }
 
-function onPageDrop(e: DragEvent) {
+function askImportMode(tableName: string): Promise<"append" | "overwrite" | null> {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.style.cssText = "padding:16px;border:1px solid #888;border-radius:6px;font-family:Arial,sans-serif;";
+    dlg.innerHTML = `
+      <p style="margin:0 0 12px 0;">Import CSV into <strong></strong>:</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" value="append">Append</button>
+        <button type="button" value="overwrite">Overwrite</button>
+        <button type="button" value="cancel">Cancel</button>
+      </div>`;
+    dlg.querySelector("strong")!.textContent = tableName;
+    const done = (v: string) => {
+      dlg.close();
+      dlg.remove();
+      resolve(v === "cancel" ? null : (v as "append" | "overwrite"));
+    };
+    dlg.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
+      if (b) done(b.value);
+    });
+    dlg.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      done("cancel");
+    });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+  });
+}
+
+async function onPageDrop(e: DragEvent) {
   e.preventDefault();
+  hideDropOverlays();
   const file = Array.from(e.dataTransfer?.files ?? []).find((f) => /\.csv$/i.test(f.name));
   if (!file) return;
   // If the drop landed inside an existing panel, route the import into that panel's table.
   const composed = e.composedPath();
   const panelEl = composed.find((n) => (n as Element).classList?.contains("jsPanel")) as Element | undefined;
   if (panelEl) {
-    // The data-table textarea has its own drop handler; if the drop hit it, let that handler import.
-    if (composed.some((n) => (n as Element).tagName === "TEXTAREA")) return;
     const tableEl = panelEl.querySelector("data-entry-table") as any;
-    if (tableEl) importCsvIntoTable(tableEl, file);
+    if (!tableEl) return;
+    const name = (tableEl.getAttribute("id") || "").replace(/^table-/, "") || "this table";
+    const mode = await askImportMode(name);
+    if (mode === null) return;
+    if (mode === "overwrite") tableEl.initializeData();
+    importCsvIntoTable(tableEl, file);
     return;
   }
   // Else: drop on empty page area → create (or overwrite) a table named after the file.
@@ -317,6 +404,8 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("dataDump").addEventListener("click", dataDump);
   document.getElementById("addTable").addEventListener("click", addTable);
   document.getElementById("workspaceSelect").addEventListener("change", onWorkspaceChange);
+  document.addEventListener("dragenter", onPageDragenter);
+  document.addEventListener("dragleave", onPageDragleave);
   document.addEventListener("dragover", onPageDragover);
   document.addEventListener("drop", onPageDrop);
 });
