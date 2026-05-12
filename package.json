@@ -16,6 +16,7 @@
     "vite": "^6.2.0"
   },
   "dependencies": {
-    "jspanel4": "^4.16.1"
+    "jspanel4": "^4.16.1",
+    "material-icons": "^1.13.14"
   }
 }

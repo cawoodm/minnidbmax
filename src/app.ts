@@ -1,5 +1,6 @@
-import { jsPanel } from "jspanel4/es6module/jspanel.min.js";
 import "jspanel4/dist/jspanel.min.css";
+import { jsPanel } from "jspanel4/es6module/jspanel.min.js";
+import "material-icons/iconfont/filled.css";
 
 addEventListener("error", function (e) {
   alert(e.message);
@@ -149,43 +150,49 @@ function createTable(code, data) {
     headerTitle: baseTitle,
     content: newTable,
     contentOverflow: "hidden",
-    headerControls: { maximize: "remove" },
-    panelSize:
-      rect?.width && rect?.height ? { width: rect.width, height: rect.height } : { width: 600, height: 400 },
-    position:
-      rect?.x != null && rect?.y != null
-        ? { my: "left-top", at: "left-top", offsetX: rect.x, offsetY: rect.y }
-        : { my: "center", at: "center" },
+    headerControls: {},
+    iconfont: "material-icons",
+    panelSize: rect?.width && rect?.height ? { width: rect.width, height: rect.height } : { width: 600, height: 400 },
+    position: rect?.x != null && rect?.y != null ? { my: "left-top", at: "left-top", offsetX: rect.x, offsetY: rect.y } : { my: "center", at: "center" },
     onbeforeclose: () => deleteTable(newTable),
     onminimized: newTable.minimizedCallback.bind(newTable),
     onmaximized: newTable.maximizedCallback.bind(newTable),
     onnormalized: newTable.restoredCallback.bind(newTable),
     callback: (p: any) => {
       // https://ionic.io/ionicons
-      const iconStyle = "width:60%;height:60%;vertical-align:middle;";
       p.addControl({
         name: "filter",
-        html: `<img src="icon-filter.svg" style="${iconStyle}"/>`,
+        html: `<span class="material-icons" style="font-size:18px;vertical-align:middle;">filter_list</span>`,
         handler: () => {
           newTable.shadowRoot.querySelector(".filter-row").classList.toggle("hide");
         },
       });
-      p.addControl({
-        name: "download",
-        html: `<img src="icon-download-outline.svg" style="${iconStyle}"/>`,
-        handler: () => {
-          const csvData = newTable.exportDataCSV();
-          downloadFile(code + ".csv", csvData);
-        },
-      });
-      p.addControl({
-        name: "data-input",
-        html: `<img src="icon-data-input.svg" style="${iconStyle}"/>`,
-        handler: () => {
+    },
+    footerToolbar: () => {
+      const bar = document.createElement("div");
+      bar.style.cssText = "display:flex;gap:6px;padding:4px 8px;align-items:center;";
+      const makeBtn = (icon: string, title: string, onClick: () => void) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.title = title;
+        btn.style.cssText = "background:none;border:0;cursor:pointer;padding:2px;display:inline-flex;";
+        btn.innerHTML = `<span class="material-icons" style="font-size:20px;">${icon}</span>`;
+        btn.addEventListener("click", onClick);
+        return btn;
+      };
+      bar.appendChild(
+        makeBtn("file_upload", "Import CSV", () => {
           newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
           (newTable.shadowRoot.querySelector(".input-container textarea") as HTMLTextAreaElement).focus();
-        },
-      });
+        }),
+      );
+      bar.appendChild(
+        makeBtn("file_download", "Export CSV", () => {
+          const csvData = newTable.exportDataCSV();
+          downloadFile(code + ".csv", csvData);
+        }),
+      );
+      return bar;
     },
   });
 

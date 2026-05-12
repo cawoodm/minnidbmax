@@ -378,6 +378,7 @@ export class DataEntryTable extends HTMLElement {
     // Refine row-height estimate from a real rendered row, then re-render once
     // if the actual height differs meaningfully from the estimate.
     if (displayData.length > 0) {
+      /** @type {HTMLElement} */
       const sample = this.tableContainer.querySelector("tbody tr.data-row");
       if (sample && sample.offsetHeight > 0) {
         const measured = sample.offsetHeight;
@@ -578,8 +579,11 @@ export class DataEntryTable extends HTMLElement {
         if (!this._displayData || this._displayData.length <= DataEntryTable.VIRTUALIZE_THRESHOLD) return;
         // Commit any active cell edit before the rebuild so the user's value isn't lost.
         const active = this.shadowRoot.activeElement;
-        if (active && active.tagName === "INPUT" && active.classList.contains("dataInput")) {
-          active.blur();
+        if (active instanceof HTMLFormElement) {
+          var input = active;
+          if (input.tagName === "INPUT" && input.classList.contains("dataInput")) {
+            input.blur();
+          }
         }
         this.tableContainer.innerHTML = this._buildTableHTML();
         this.addTableEventListeners();
@@ -904,8 +908,7 @@ export class DataEntryTable extends HTMLElement {
 }
 
 class ValidationError extends Error {
-  constructor(message = "", ...args) {
-    super(message, ...args);
-    //this.message = message + " has not yet been implemented.";
+  constructor(message = "") {
+    super(message);
   }
 }
