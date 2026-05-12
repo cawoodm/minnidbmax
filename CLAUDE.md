@@ -20,11 +20,19 @@ Pure client-side static web app — no server, no backend. Three layers:
 
 3. **Gist sync** (`src/syncher-gist.js` + `src/gist.js`) — optional push/pull of all `*.table.json` entries to a single GitHub Gist. Credentials are read from store keys `.gist-user`, `.gist-token`, `.gist-id` (must be set manually via the JS console — README has the snippet). 1 MB Gist file limit.
 
-`src/app.ts` wires it all together: defines the custom element, builds the DataStore, creates a WinBox per stored table, and binds the four toolbar buttons.
+`src/app.ts` wires it all together: defines the custom element, builds the DataStore, creates a jsPanel per stored table, and binds the four toolbar buttons.
 
-### WinBox is a global, not a module
+### jsPanel windowing
 
-`public/winbox.bundle.min.js` is loaded via a plain `<script>` tag in `index.html` and `WinBox` is referenced as a global (`declare var WinBox: any` in `app.ts`). The `winbox` npm package is in `dependencies` but isn't imported — don't switch to `import WinBox from "winbox"` without also removing the script tag and verifying the bundled CSS still loads.
+We use **jsPanel** (`jspanel4` npm package, https://jspanel.de/) — both JS and CSS are imported as ES modules at the top of `src/app.ts` (`import { jsPanel } from "jspanel4/es6module/jspanel.min.js"; import "jspanel4/dist/jspanel.min.css";`), so Vite bundles them. No script/link tag in `index.html`.
+
+Wiring notes for `createTable()` in `src/app.ts`:
+- The data-entry-table custom element is passed as `content` (jsPanel accepts an HTMLElement directly, appending it to `panel.content`).
+- Three custom toolbar buttons (filter / download / data-input) are added inside the `callback` option via `panel.addControl({ name, html, handler })`. `handler(panel, control)` is bound to `pointerup` on the button, not `click` — relevant for synthetic event testing.
+- jsPanel dispatches `jspanelresize` / `jspaneldragstop` / `jspanelclosed` on **`document`** (not on the panel element), each carrying `event.panel` pointing back to the instance — listeners filter by reference equality and are removed on `jspanelclosed`.
+- Position is restored from `elementRect` via `{ my: 'left-top', at: 'left-top', offsetX, offsetY }`. The persisted `(x, y)` are viewport-relative pixels, read on dragstop from `panel.getBoundingClientRect()` (NOT `parseInt(panel.style.left)` — jsPanel writes `style.left: calc(...)` after a reposition, which doesn't parse).
+- `onbeforeclose` returning truthy = proceed with close; falsy = abort. `deleteTable()` already returns the right shape (true on confirm, false on cancel).
+- The maximize button is removed via `headerControls: { maximize: 'remove' }`. jsPanel also renders smallify/minimize/normalize/close by default — we keep all of those.
 
 ### Storage key conventions
 

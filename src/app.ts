@@ -1,4 +1,6 @@
-declare var WinBox: any;
+import { jsPanel } from "jspanel4/es6module/jspanel.min.js";
+import "jspanel4/dist/jspanel.min.css";
+
 addEventListener("error", function (e) {
   alert(e.message);
   // console.error(e.error.stack);
@@ -136,66 +138,88 @@ function downloadFile(filename, content) {
   document.body.removeChild(element);
 }
 
-//import WinBox from "winbox";
-
 function createTable(code, data) {
   const newTable = document.createElement("data-entry-table") as DataEntryTable;
   newTable.setAttribute("storage-key", `${code}.table.json`);
   newTable.setAttribute("id", "table-" + code);
   const baseTitle = toTitleCase(code);
-  // https://github.com/nextapps-de/winbox?tab=readme-ov-file
-  let win = new WinBox(baseTitle, {
-    mount: newTable,
-    onresize: newTable.resizedCallback.bind(newTable),
-    onmove: newTable.movedCallback.bind(newTable),
-    onminimize: newTable.minimizedCallback.bind(newTable),
-    onmaximize: newTable.maximizedCallback.bind(newTable),
-    onrestore: newTable.restoredCallback.bind(newTable),
-    onclose: () => deleteTable(newTable),
-  });
-  win.removeControl("full");
-  // https://ionic.io/ionicons
-  // https://github.com/ionic-team/ionicons
-  win.addControl({
-    class: "wb-full",
-    image: "icon-filter.svg",
-    click: function (event, winbox) {
-      document
-        .getElementById("table-" + code)
-        .shadowRoot.querySelector(".filter-row")
-        .classList.toggle("hide");
+  const rect = data?.elementRect;
+  // https://jspanel.de/
+  const panel: any = jsPanel.create({
+    headerTitle: baseTitle,
+    content: newTable,
+    contentOverflow: "hidden",
+    headerControls: { maximize: "remove" },
+    panelSize:
+      rect?.width && rect?.height ? { width: rect.width, height: rect.height } : { width: 600, height: 400 },
+    position:
+      rect?.x != null && rect?.y != null
+        ? { my: "left-top", at: "left-top", offsetX: rect.x, offsetY: rect.y }
+        : { my: "center", at: "center" },
+    onbeforeclose: () => deleteTable(newTable),
+    onminimized: newTable.minimizedCallback.bind(newTable),
+    onmaximized: newTable.maximizedCallback.bind(newTable),
+    onnormalized: newTable.restoredCallback.bind(newTable),
+    callback: (p: any) => {
+      // https://ionic.io/ionicons
+      const iconStyle = "width:60%;height:60%;vertical-align:middle;";
+      p.addControl({
+        name: "filter",
+        html: `<img src="icon-filter.svg" style="${iconStyle}"/>`,
+        handler: () => {
+          newTable.shadowRoot.querySelector(".filter-row").classList.toggle("hide");
+        },
+      });
+      p.addControl({
+        name: "download",
+        html: `<img src="icon-download-outline.svg" style="${iconStyle}"/>`,
+        handler: () => {
+          const csvData = newTable.exportDataCSV();
+          downloadFile(code + ".csv", csvData);
+        },
+      });
+      p.addControl({
+        name: "data-input",
+        html: `<img src="icon-data-input.svg" style="${iconStyle}"/>`,
+        handler: () => {
+          newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
+          (newTable.shadowRoot.querySelector(".input-container textarea") as HTMLTextAreaElement).focus();
+        },
+      });
     },
   });
-  win.addControl({
-    class: "wb-full",
-    image: "icon-download-outline.svg",
-    click: function (event, winbox) {
-      const csvData = newTable.exportDataCSV();
-      downloadFile(code + ".csv", csvData);
-      this.classList.toggle("active");
-    },
-  });
-  win.addControl({
-    class: "wb-full",
-    image: "icon-data-input.svg",
-    click: function (event, winbox) {
-      newTable.shadowRoot.querySelector(".input-container").classList.toggle("hide");
-      (newTable.shadowRoot.querySelector(".input-container textarea") as HTMLTextAreaElement).focus();
-    },
-  });
-  if (data?.elementRect) {
-    win.move(data.elementRect.x, data.elementRect.y);
-    win.resize(data.elementRect.width, data.elementRect.height);
-  }
-  if (data?.elementRect?.minimized) win.minimize(true);
-  else if (data?.elementRect?.maximized) win.maximize(true);
+
+  // jsPanel dispatches resize/drag/close events on `document`; each event carries
+  // a `.panel` reference, which we use to filter to this instance.
+  const onResize = (e: Event) => {
+    if ((e as any).panel !== panel) return;
+    newTable.resizedCallback(panel.offsetWidth, panel.offsetHeight);
+  };
+  const onDragStop = (e: Event) => {
+    if ((e as any).panel !== panel) return;
+    const r = panel.getBoundingClientRect();
+    newTable.movedCallback(Math.round(r.left), Math.round(r.top));
+  };
+  const onClosed = (e: Event) => {
+    if ((e as any).panel !== panel) return;
+    document.removeEventListener("jspanelresize", onResize);
+    document.removeEventListener("jspaneldragstop", onDragStop);
+    document.removeEventListener("jspanelclosed", onClosed);
+  };
+  document.addEventListener("jspanelresize", onResize);
+  document.addEventListener("jspaneldragstop", onDragStop);
+  document.addEventListener("jspanelclosed", onClosed);
+
+  if (rect?.minimized) panel.minimize();
+  else if (rect?.maximized) panel.maximize();
+
   newTable.addEventListener("row-count-changed", (e: Event) => {
     const { count } = (e as CustomEvent).detail;
-    win.setTitle(`${baseTitle} (${count})`);
+    panel.setHeaderTitle(`${baseTitle} (${count})`);
   });
   // Initial render fired before the listener was attached — sync the title now.
-  win.setTitle(`${baseTitle} (${newTable.dataArray.length})`);
-  // TODO: Remove data reading from data table class?
+  panel.setHeaderTitle(`${baseTitle} (${newTable.dataArray.length})`);
+
   function toTitleCase(str) {
     return str.replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase());
   }
