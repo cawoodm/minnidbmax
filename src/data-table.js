@@ -713,9 +713,11 @@ export class DataEntryTable extends HTMLElement {
           const filterValue = field.value.trim();
           this.filters[fieldIndex] = filterValue;
 
-          // Filter the data array based on the input value
+          // Filter on the displayed text so users can match what they see
+          // (especially relevant for locale-formatted dates).
+          const colType = this.columns[fieldIndex].type;
           const filteredData = this.dataArray.filter((row) => {
-            return String(row[fieldIndex]).toLowerCase().includes(filterValue.toLowerCase());
+            return this._formatCellText(row[fieldIndex], colType).toLowerCase().includes(filterValue.toLowerCase());
           });
 
           // Update the table with filtered data
