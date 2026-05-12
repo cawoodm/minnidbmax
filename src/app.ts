@@ -24,6 +24,19 @@ const workspace = (qs.has("space") && qs.get("space")) || localStorage.getItem("
 const store = DataStore(`/minnidbmax/${workspace}/`);
 window.store = store; // Expose store globally for debugging
 
+// Monotonic rank for window stacking. Higher = more recently fronted. Seeded
+// from existing storage so a new session continues above prior values.
+// jsPanel's resetZi() reshuffles style.zIndex behind our back, so we can't
+// rely on reading it — this rank is our own source of truth for z-order.
+let frontRank = (() => {
+  let max = 0;
+  for (const [, data] of store.dir({ suffix: ".table.json" })) {
+    const z = (data as any)?.elementRect?.zIndex;
+    if (typeof z === "number" && z > max) max = z;
+  }
+  return max;
+})();
+
 import { SyncherGist } from "./syncher-gist.js";
 const gistUsername = store.get(".gist-user");
 const gistToken = store.get(".gist-token");
@@ -208,15 +221,23 @@ function createTable(code, data) {
     const r = panel.getBoundingClientRect();
     newTable.movedCallback(Math.round(r.left), Math.round(r.top));
   };
+  const onFronted = (e: Event) => {
+    if ((e as any).panel !== panel) return;
+    newTable.zIndexChangedCallback(++frontRank);
+  };
   const onClosed = (e: Event) => {
     if ((e as any).panel !== panel) return;
     document.removeEventListener("jspanelresize", onResize);
     document.removeEventListener("jspaneldragstop", onDragStop);
+    document.removeEventListener("jspanelfronted", onFronted);
     document.removeEventListener("jspanelclosed", onClosed);
   };
   document.addEventListener("jspanelresize", onResize);
   document.addEventListener("jspaneldragstop", onDragStop);
+  document.addEventListener("jspanelfronted", onFronted);
   document.addEventListener("jspanelclosed", onClosed);
+  // Seed an initial rank so newly created (unclicked) panels are still ordered above older ones on next reload.
+  newTable.zIndexChangedCallback(++frontRank);
 
   if (rect?.minimized) panel.minimize();
   else if (rect?.maximized) panel.maximize();
@@ -378,7 +399,11 @@ async function onPageDrop(e: DragEvent) {
 }
 
 function displayTables() {
-  store.dir({ suffix: ".table.json" }).forEach(([key, data]) => {
+  const entries = store.dir({ suffix: ".table.json" }) as [string, any][];
+  // Restore stacking order: lowest persisted z-index gets created first so
+  // jsPanel's incrementing zi.next() reproduces the user's last layering.
+  entries.sort((a, b) => (a[1]?.elementRect?.zIndex ?? -Infinity) - (b[1]?.elementRect?.zIndex ?? -Infinity));
+  entries.forEach(([key, data]) => {
     let table = key.replace(".table.json", "");
     let el: DataEntryTable = document.querySelector("#table-" + table);
     if (!el) {
@@ -390,7 +415,6 @@ function displayTables() {
       }
     } else {
       el.refresh();
-      //el.importData(JSON.parse(table.data));
     }
   });
 }

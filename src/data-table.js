@@ -121,6 +121,12 @@ export class DataEntryTable extends HTMLElement {
     this.elementRect.maximized = false;
     this.saveToStorage();
   }
+  zIndexChangedCallback(z) {
+    if (!Number.isFinite(z)) return;
+    if (this.elementRect.zIndex === z) return; // skip no-op writes
+    this.elementRect.zIndex = z;
+    this.saveToStorage();
+  }
 
   // Handle input events
   handleKeyPress(event) {
