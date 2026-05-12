@@ -2,6 +2,10 @@
 
 import { jsPanel } from "jspanel4/es6module/jspanel.js";
 
+// Fallback when a column has no unambiguous date value to infer DMY vs MDY from.
+// Switzerland/EU convention: day-month-year.
+const DEFAULT_DATE_FORMAT = "YYYY-MM-DD";
+
 export class DataEntryTable extends HTMLElement {
   constructor() {
     super();
@@ -69,7 +73,7 @@ export class DataEntryTable extends HTMLElement {
 
   initializeData() {
     this.dataArray = [];
-    this.columns = [];
+    this.columns = []; // TODO: We may not always want to overwrite custom column definitions when we import with overwrite!
     this.filters = [];
     this.sortColumn = -1;
     this.sortDirection = "asc";
@@ -136,41 +140,52 @@ export class DataEntryTable extends HTMLElement {
       .filter((line) => line.length > 0);
     if (inputLines.length === 0) return; // No input to process
     const seperator = inputLines[0].includes(";") ? ";" : inputLines[0].includes("\t") ? "\t" : ",";
-    let lineCount = 0;
-    let errorLines = 0;
-    for (const line of inputLines) {
-      lineCount++;
-      const values = this.parseCSV(line.trim(), seperator);
-      if (values.length === 0) continue; // Skip empty lines
-      // If this is the first line of the first data entry
-      if (this.dataArray.length === 0 && lineCount === 1 && typeof this.columns[0] === "undefined") {
-        let fieldNames = null;
-        // Is this a header line?
-        if (values.every((cell) => this.detectType(cell) === "string")) {
-          // Extract field names from the first row
-          fieldNames = values;
-          let line = inputLines.length > 1 ? this.parseCSV(inputLines[1], seperator) : values;
-          this.establishColumns(line, fieldNames);
-          continue; // Skip adding the header
-        }
-        // No header, establish columns from the first data row
-        this.establishColumns(values);
+
+    // Pre-parse all lines once — needed for both header detection and per-column date-format inference.
+    const parsedRows = inputLines.map((line) => this.parseCSV(line.trim(), seperator)).filter((r) => r.length > 0);
+    if (parsedRows.length === 0) return;
+
+    // Decide where data rows start (skip the header row if present).
+    const isNewTable = this.dataArray.length === 0 && typeof this.columns[0] === "undefined";
+    let dataStart = 0;
+    if (isNewTable) {
+      const firstRow = parsedRows[0];
+      if (firstRow.every((cell) => this.detectType(cell) === "string")) {
+        const sample = parsedRows.length > 1 ? parsedRows[1] : firstRow;
+        this.establishColumns(sample, firstRow);
+        dataStart = 1;
+      } else {
+        this.establishColumns(firstRow);
+        dataStart = 0;
       }
+    }
+    const dataRows = parsedRows.slice(dataStart);
+
+    // Infer DMY/MDY per date column from the data rows; persist on the column.
+    this.columns.forEach((col, i) => {
+      if (col.type === "date" && !col.dateFormat) {
+        col.dateFormat = this.inferColumnDateFormat(dataRows, i) || DEFAULT_DATE_FORMAT;
+      }
+    });
+
+    let lineCount = dataStart;
+    let errorLines = 0;
+    for (const values of dataRows) {
+      lineCount++;
       try {
         this.processLine(values);
       } catch (e) {
         if (!(e instanceof ValidationError)) throw e;
-        //if (e instanceof ReferenceError) throw e;
         if (errorLines == 0 && inputLines.length > 5) {
           alert(`Line ${lineCount} failed: ${e.message}`);
-          if (confirm("Do you want to stop processing? Pressing no/cancel now will skip all invalid rows silently!")) return; // Stop processing further lines on error
+          if (confirm("Do you want to stop processing? Pressing no/cancel now will skip all invalid rows silently!")) return;
           errorLines++;
         } else if (errorLines > 0) {
           errorLines++;
           console.warn(`Line ${lineCount} failed: ${e.message}`);
         } else {
           this.showAlert(`Line ${lineCount} failed: ${e.message}`, "error");
-          return; // Stop processing further lines on error
+          return;
         }
       }
     }
@@ -236,12 +251,15 @@ export class DataEntryTable extends HTMLElement {
       return "boolean";
     }
 
-    // Check if date (YYYY-MM-DD format)
+    // Check if date — canonical YYYY-MM-DD, or D/M/YYYY, D-M-YYYY, D.M.YYYY (DMY/MDY both accepted).
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const date = new Date(value);
       if (!isNaN(date.getTime())) {
         return "date";
       }
+    }
+    if (/^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}$/.test(value)) {
+      return "date";
     }
 
     // Check if number
@@ -253,17 +271,82 @@ export class DataEntryTable extends HTMLElement {
     return "string";
   }
 
+  // Parse YYYY-MM-DD or D/M/YYYY (with separator -, /, or .) into canonical YYYY-MM-DD.
+  // formatHint ("DMY" | "MDY") resolves ambiguous values (both segments ≤ 12).
+  // Returns null on invalid input.
+  parseFlexibleDate(value, formatHint) {
+    if (typeof value !== "string") value = String(value);
+    const pad = (n) => String(n).padStart(2, "0");
+    let m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : value;
+    }
+    m = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    if (!m) return null;
+    const a = parseInt(m[1], 10);
+    const b = parseInt(m[2], 10);
+    const year = m[3];
+    let day, month;
+    if (a > 12 && b <= 12) {
+      day = a;
+      month = b;
+    } else if (b > 12 && a <= 12) {
+      day = b;
+      month = a;
+    } else if (a > 12 && b > 12) {
+      return null; // both can't be month
+    } else {
+      // ambiguous — use hint
+      if (formatHint === "MDY") {
+        month = a;
+        day = b;
+      } else {
+        // default DMY
+        day = a;
+        month = b;
+      }
+    }
+    if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+    const canonical = `${year}-${pad(month)}-${pad(day)}`;
+    const d = new Date(canonical);
+    if (isNaN(d.getTime())) return null;
+    // Round-trip guard against e.g. 2024-02-31 → JS rolls over silently
+    if (d.toISOString().split("T")[0] !== canonical) return null;
+    return canonical;
+  }
+
+  // Scan a column for an unambiguous DMY or MDY date; null if none found.
+  inferColumnDateFormat(parsedRows, columnIndex) {
+    for (const row of parsedRows) {
+      const val = row[columnIndex];
+      if (!val || typeof val !== "string") continue;
+      const m = val.match(/^(\d{1,2})[-/.](\d{1,2})[-/.]\d{4}$/);
+      if (!m) continue;
+      const a = parseInt(m[1], 10);
+      const b = parseInt(m[2], 10);
+      if (a > 12 && b <= 12) return "DMY";
+      if (b > 12 && a <= 12) return "MDY";
+    }
+    return null;
+  }
+
   // Format value based on detected type
-  serializeToDB(value, type) {
+  serializeToDB(value, column) {
     if (value === null) return null; // (non-strict)
     if (typeof value === "undefined") return null; // (non-strict)
-    switch (type) {
+    // Back-compat: callers used to pass a bare type string.
+    const col = typeof column === "string" ? { type: column } : column;
+    switch (col.type) {
       case "boolean":
         return value.toLowerCase() === "true";
       case "number":
         return parseFloat(value);
-      case "date":
-        return new Date(value).toISOString().split("T")[0];
+      case "date": {
+        const canonical = this.parseFlexibleDate(value, col.dateFormat || DEFAULT_DATE_FORMAT);
+        if (canonical === null) console.warn(`Unparseable date "${value}" stored as null`);
+        return canonical;
+      }
       default:
         return value;
     }
@@ -279,6 +362,7 @@ export class DataEntryTable extends HTMLElement {
         type: this.detectType(value),
         default: null,
         max: 0,
+        dateFormat: null,
       };
       if (headers) {
         const fieldMeta = (headers[index] + "::::").split(":");
@@ -318,16 +402,25 @@ export class DataEntryTable extends HTMLElement {
     for (let i = 0; i < values.length; i++) {
       if (values[i] === null) continue; // Skip null values (non-strict)
       const detectedType = this.detectType(values[i]);
-      // Special case: anything can be accepted into string columns
-      if (this.columns[i].type === "string") continue;
-      if (detectedType !== this.columns[i].type) throw new ValidationError(`Column ${i} "${values[i]}" of wrong type (${detectedType}): should be ${this.columns[i].type}!`);
+      // string columns accept any type but still enforce max-length below
+      if (this.columns[i].type !== "string" && detectedType !== this.columns[i].type) {
+        throw new ValidationError(`Column ${i} "${values[i]}" of wrong type (${detectedType}): should be ${this.columns[i].type}!`);
+      }
+      this.checkMaxLength(values[i], this.columns[i], i);
     }
+  }
+
+  checkMaxLength(value, column, index) {
+    if (!column.max) return; // 0 / undefined = no limit
+    if (column.type !== "string" && column.type !== "number") return; // skip date / boolean
+    const len = String(value).length;
+    if (len > column.max) throw new ValidationError(`Column ${column.name || column.field} "${value}" exceeds max length ${column.max} (was ${len})!`);
   }
 
   // Add data row to array
   addDataRow(values) {
     // Format values according to their types
-    const formattedValues = values.map((val, index) => this.serializeToDB(val, this.columns[index].type));
+    const formattedValues = values.map((val, index) => this.serializeToDB(val, this.columns[index]));
     this.dataArray.push(formattedValues);
     return true;
   }
@@ -481,12 +574,15 @@ export class DataEntryTable extends HTMLElement {
 
   _formatCellText(value, dataType) {
     if (value === null || value === undefined) return "";
-    if (dataType === "date") {
-      try {
-        return new Date(value).toISOString().split("T")[0];
-      } catch (e) {
-        return String(value);
+    if (dataType === "date" && typeof value === "string") {
+      const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) {
+        // Build from parts (local midnight) — `new Date("2024-03-15")` parses as UTC,
+        // which then shifts a day when toLocaleDateString converts to a UTC-west zone.
+        const d = new Date(+m[1], +m[2] - 1, +m[3]);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString();
       }
+      return String(value);
     }
     return String(value);
   }
@@ -535,13 +631,24 @@ export class DataEntryTable extends HTMLElement {
           input.focus();
           return;
         }
-        if (column.type === "date" && newValue !== "" && isNaN(new Date(newValue).getTime())) {
+        if (column.type === "date" && newValue !== "" && this.parseFlexibleDate(newValue, column.dateFormat || DEFAULT_DATE_FORMAT) === null) {
           done = false;
           alert("Invalid date");
           input.focus();
           return;
         }
-        this.dataArray[dataIndex][fieldIndex] = newValue === "" && column.type !== "string" ? null : this.serializeToDB(newValue, column.type);
+        if (newValue !== "") {
+          try {
+            this.checkMaxLength(newValue, column, fieldIndex);
+          } catch (e) {
+            if (!(e instanceof ValidationError)) throw e;
+            done = false;
+            this.showAlert(e.message, "error");
+            input.focus();
+            return;
+          }
+        }
+        this.dataArray[dataIndex][fieldIndex] = newValue === "" && column.type !== "string" ? null : this.serializeToDB(newValue, column);
         this.saveToStorage();
       }
       this._deactivateCell(td, dataIndex, fieldIndex);
@@ -648,9 +755,9 @@ export class DataEntryTable extends HTMLElement {
             } else {
               const value = field.value;
               if (column.type === "number" && isNaN(parseFloat(value))) return alert("Invalid number");
-              if (column.type === "date" && !new Date(value)) return alert("Invalid date");
+              if (column.type === "date" && this.parseFlexibleDate(value, column.dateFormat || DEFAULT_DATE_FORMAT) === null) return alert("Invalid date");
               if (!this.dataArray[dataIndex]) return alert(`Missing row: ${dataIndex}`);
-              this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column.type);
+              this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column);
             }
             this.saveToStorage();
             // this.renderTable();
@@ -692,7 +799,7 @@ export class DataEntryTable extends HTMLElement {
       let name = fieldMeta[1] || this._toTitleCase(field);
       let defaultValue = fieldMeta[3];
       let type = fieldMeta[2] || this.detectType(defaultValue);
-      defaultValue = this.serializeToDB(defaultValue, type);
+      defaultValue = this.serializeToDB(defaultValue, { type, dateFormat: DEFAULT_DATE_FORMAT });
       this.columns.push({ field, name, type });
       this.dataArray.forEach((row) => {
         row.push(defaultValue);
