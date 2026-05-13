@@ -635,7 +635,12 @@ export class DataEntryTable extends HTMLElement {
 
   _buildHeadHTML() {
     const visible = this._visibleColumnIndices();
-    let html = '<thead><tr><th class="row-actions"></th>';
+    const anyFilter = (this.filters || []).some((f) => !!f);
+    const activeCls = anyFilter ? " active" : "";
+    let html =
+      '<thead><tr><th class="row-actions">' +
+      `<button type="button" class="filter-toggle${activeCls}" title="Filter/Search Data"><span class="material-icons" style="font-size:18px;vertical-align:middle;">filter_alt</span></button>` +
+      "</th>";
     visible.forEach((index) => {
       const col = this.columns[index];
       const dataType = col.type;
@@ -922,6 +927,20 @@ export class DataEntryTable extends HTMLElement {
   }
 
   _attachHeadListeners() {
+    // Filter toggle — small icon button in the row-actions gutter. Shows/hides
+    // the filter row and tracks an "active" highlight when any filter is set.
+    const filterToggle = this.shadowRoot.querySelector("button.filter-toggle") as HTMLButtonElement | null;
+    if (filterToggle) {
+      filterToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const filterRow = this.shadowRoot.querySelector(".filter-row");
+        if (!filterRow) return;
+        filterRow.classList.toggle("hide");
+        const visibleNow = !filterRow.classList.contains("hide");
+        filterToggle.classList.toggle("active", visibleNow || (this.filters || []).some((f) => !!f));
+      });
+    }
+
     // Filter fields — live filter on every keystroke. Calls _renderBodyOnly so
     // the filter-row input itself keeps focus and caret position.
     const filterFields = this.shadowRoot.querySelectorAll("td input.filter-input") as NodeListOf<HTMLInputElement>;

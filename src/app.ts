@@ -16,7 +16,7 @@ import { DataEntryTable } from "./data-table";
 customElements.define("data-entry-table", DataEntryTable);
 
 import { DataStore } from "./data-store";
-import { workspace, initWorkspaceSelect } from "./workspace";
+import { initWorkspaceSelect, workspace } from "./workspace";
 
 declare global {
   interface Window {
@@ -127,21 +127,6 @@ function createTable(code, data) {
     onminimized: newTable.minimizedCallback.bind(newTable),
     onmaximized: newTable.maximizedCallback.bind(newTable),
     onnormalized: newTable.restoredCallback.bind(newTable),
-    callback: (p: any) => {
-      // https://fonts.google.com/icons?icon.query=minimize&icon.size=24&icon.color=%23e3e3e3
-      p.addControl({
-        name: "filter",
-        html: `<span class="material-icons" style="font-size:18px;vertical-align:middle;">filter_list</span>`,
-        handler: () => {
-          newTable.shadowRoot.querySelector(".filter-row").classList.toggle("hide");
-        },
-      });
-      // p.addControl({
-      //   name: "columns",
-      //   html: `<span class="material-icons" style="font-size:18px;vertical-align:middle;">settings</span>`,
-      //   handler: () => newTable.openColumnEditor(),
-      // });
-    },
     footerToolbar: () => {
       const bar = document.createElement("div");
       bar.style.cssText = "display:flex;gap:6px;padding:4px 8px;align-items:center;";

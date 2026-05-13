@@ -26,3 +26,4 @@ dist-ssr
 local.settings.json
 tmp*
 build
+test-results

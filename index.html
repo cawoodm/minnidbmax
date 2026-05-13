@@ -143,6 +143,42 @@
           text-align: center;
           border-bottom: 1px solid #ddd;
         }
+        /* Material Icons class rules need to live inside the Shadow DOM template
+           because Shadow DOM doesn't inherit class definitions from the outer
+           document. The font itself is loaded via @font-face at document scope. */
+        .material-icons {
+          font-family: "Material Icons";
+          font-weight: normal;
+          font-style: normal;
+          font-size: 24px;
+          line-height: 1;
+          letter-spacing: normal;
+          text-transform: none;
+          display: inline-block;
+          white-space: nowrap;
+          word-wrap: normal;
+          direction: ltr;
+          -webkit-font-feature-settings: "liga";
+          -webkit-font-smoothing: antialiased;
+        }
+        button.filter-toggle {
+          background: none;
+          border: 0;
+          cursor: pointer;
+          padding: 2px;
+          color: #999;
+          border-radius: 3px;
+          line-height: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        button.filter-toggle:hover {
+          background-color: #e0e0e0;
+        }
+        button.filter-toggle.active {
+          color: #2563eb;
+        }
         tr.filter-row td {
           padding: 4px 6px;
           background-color: #fafafa;

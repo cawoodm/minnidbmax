@@ -2,9 +2,7 @@
 
 ## UI Features
 * Dialogs should be centered not at the top left of the screen
-* Simpler filtering
-* Columns
-  * Drag and drop to change order
+* Move the filter icon to the header of the first column
 
 ## DB Features
 * Strict/tolerant mode for data entry
