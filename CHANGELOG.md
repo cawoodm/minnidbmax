@@ -7,6 +7,7 @@ Grouped by day, derived from full git history. Most recent first
 - Column Editor (v0.0.16)
 - Import entire DB (v0.0.17)
 - Filter as you type (v0.0.18)
+- Hide and reorder columns (v0.0.19).
 
 ## 2026-05-12
 

@@ -15,6 +15,10 @@ export class DataEntryTable extends HTMLElement {
   elementRect: any = {};
   sortColumn: number = -1;
   sortDirection: "asc" | "desc" = "asc";
+  // Display order: indices into `columns`. Determines render order; entries whose
+  // column has hidden=true are filtered out. Defaults to identity [0..N-1] for
+  // tables that pre-date this feature.
+  displayOrder: number[] = [];
   storageKey: string;
   dataInput: HTMLTextAreaElement;
   tableContainer: HTMLElement;
@@ -77,10 +81,17 @@ export class DataEntryTable extends HTMLElement {
     this.dataArray = [];
     this.columns = []; // TODO: We may not always want to overwrite custom column definitions when we import with overwrite!
     this.filters = [];
+    this.displayOrder = [];
     this.sortColumn = -1;
     this.sortDirection = "asc";
     this.saveToStorage();
     this.renderTable();
+  }
+
+  // Render-order traversal of column indices: respects displayOrder and skips hidden columns.
+  _visibleColumnIndices(): number[] {
+    const order = this.displayOrder && this.displayOrder.length === this.columns.length ? this.displayOrder : this.columns.map((_, i) => i);
+    return order.filter((i) => !this.columns[i]?.hidden);
   }
 
   resizedCallback(w, h) {
@@ -366,6 +377,7 @@ export class DataEntryTable extends HTMLElement {
         dateFormat: null,
         isUnique: false,
         isNotNull: false,
+        hidden: false,
       };
       if (headers) {
         const fieldMeta = (headers[index] + ":::::").split(":");
@@ -383,6 +395,7 @@ export class DataEntryTable extends HTMLElement {
       return col;
     });
     this.filters = new Array(this.columns.length).fill("");
+    this.displayOrder = this.columns.map((_, i) => i);
     // Tell listeners (e.g. app.ts) that columns just got auto-detected, so the editor dialog can auto-open.
     this.dispatchEvent(new CustomEvent("columns-established", { bubbles: true, composed: true }));
   }
@@ -509,13 +522,9 @@ export class DataEntryTable extends HTMLElement {
     let rows = this.dataArray;
     // AND all non-empty per-column filters; match against displayed text so
     // locale-formatted dates compare against what the user sees.
-    const active = (this.filters || [])
-      .map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() }))
-      .filter((x) => x.f);
+    const active = (this.filters || []).map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() })).filter((x) => x.f);
     if (active.length) {
-      rows = rows.filter((row) =>
-        active.every(({ i, f }) => this._formatCellText(row[i], this.columns[i].type).toLowerCase().includes(f)),
-      );
+      rows = rows.filter((row) => active.every(({ i, f }) => this._formatCellText(row[i], this.columns[i].type).toLowerCase().includes(f)));
     }
     // Apply sort. Always copy so callers don't mutate dataArray.
     rows = [...rows];
@@ -609,8 +618,10 @@ export class DataEntryTable extends HTMLElement {
   }
 
   _buildHeadHTML() {
+    const visible = this._visibleColumnIndices();
     let html = '<thead><tr><th class="row-actions"></th>';
-    this.columns.forEach((col, index) => {
+    visible.forEach((index) => {
+      const col = this.columns[index];
       const dataType = col.type;
       const classNames = [dataType];
       if (this.sortColumn === index) classNames.push(this.sortDirection);
@@ -630,12 +641,7 @@ export class DataEntryTable extends HTMLElement {
     html += "</tr>";
     html +=
       `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}"><td></td>` +
-      this.columns
-        .map(
-          (col, index) =>
-            `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index]}" placeholder="filter…" list="filter-list-${index}"/></td>`,
-        )
-        .join(" ") +
+      visible.map((index) => `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index] || ""}" placeholder="filter…" list="filter-list-${index}"/></td>`).join(" ") +
       "</tr></thead>";
     html += this._buildFilterDatalists();
     return html;
@@ -647,7 +653,7 @@ export class DataEntryTable extends HTMLElement {
   // narrowing one column shrinks the other columns' dropdowns.
   _buildFilterDatalists() {
     let html = "";
-    this.columns.forEach((_, index) => {
+    this._visibleColumnIndices().forEach((index) => {
       html += `<datalist id="filter-list-${index}">${this._buildFilterOptions(index)}</datalist>`;
     });
     return html;
@@ -660,9 +666,7 @@ export class DataEntryTable extends HTMLElement {
   _buildFilterOptions(columnIndex) {
     const MAX = 500;
     const col = this.columns[columnIndex];
-    const active = (this.filters || [])
-      .map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() }))
-      .filter((x) => x.f && x.i !== columnIndex);
+    const active = (this.filters || []).map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() })).filter((x) => x.f && x.i !== columnIndex);
 
     const seen = new Set();
     for (let r = 0; r < this.dataArray.length && seen.size < MAX; r++) {
@@ -689,7 +693,7 @@ export class DataEntryTable extends HTMLElement {
   // Replacing innerHTML on the datalist rather than swapping the <datalist> element
   // itself avoids disturbing the input the user is currently typing in.
   _refreshFilterDatalists() {
-    this.columns.forEach((_, index) => {
+    this._visibleColumnIndices().forEach((index) => {
       const dl = this.shadowRoot.getElementById(`filter-list-${index}`);
       if (!dl) return;
       dl.innerHTML = this._buildFilterOptions(index);
@@ -699,7 +703,7 @@ export class DataEntryTable extends HTMLElement {
   _buildBodyHTML() {
     const total = this._displayData.length;
     const useVirtual = total > DataEntryTable.VIRTUALIZE_THRESHOLD;
-    const colSpan = this.columns.length + 1;
+    const colSpan = this._visibleColumnIndices().length + 1;
 
     let firstVisible = 0;
     let lastVisible = total;
@@ -728,7 +732,8 @@ export class DataEntryTable extends HTMLElement {
 
   _buildRowHTML(row, originalIndex) {
     let html = `<tr class="data-row"><td class="row-actions"><button class="row-menu" data-index="${originalIndex}">⋯</button></td>`;
-    row.forEach((cell, cellIndex) => {
+    this._visibleColumnIndices().forEach((cellIndex) => {
+      const cell = row[cellIndex];
       const column = this.columns[cellIndex];
       const dataType = column.type;
       const classNames = [dataType];
@@ -941,7 +946,7 @@ export class DataEntryTable extends HTMLElement {
 
   _attachBodyListeners() {
     // Editable text/number/date cells — click swaps in an <input>
-    const editableCells = /** @type {NodeListOf<HTMLElement>} */ (this.shadowRoot.querySelectorAll("td.editable"));
+    const editableCells = /** @type {NodeListOf<HTMLElement>} */ this.shadowRoot.querySelectorAll("td.editable");
     editableCells.forEach((td) => {
       td.addEventListener("click", () => {
         if (td.querySelector("input")) return;
@@ -953,32 +958,32 @@ export class DataEntryTable extends HTMLElement {
     const inputFields = this.shadowRoot.querySelectorAll("td input.dataInput") as NodeListOf<HTMLInputElement>;
     inputFields.forEach((field) => {
       field.addEventListener("change", (e) => {
-            const el = e.target as HTMLInputElement;
-            const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
-            const dataIndex = parseInt(field.getAttribute("dataIndex"));
-            const column = this.columns[fieldIndex];
-            if (el.type === "checkbox") {
-              const newVal = field.checked;
-              if (column.isUnique || column.isNotNull) {
-                const candidate = [...this.dataArray[dataIndex]];
-                candidate[fieldIndex] = newVal;
-                try {
-                  this._checkKeyConstraints(candidate, dataIndex);
-                } catch (err) {
-                  if (!(err instanceof ValidationError)) throw err;
-                  field.checked = !newVal; // revert visual state
-                  this.showAlert(err.message, "error");
-                  return;
-                }
-              }
-              this.dataArray[dataIndex][fieldIndex] = newVal;
-            } else {
-              const value = field.value;
-              if (column.type === "number" && isNaN(parseFloat(value))) return alert("Invalid number");
-              if (column.type === "date" && this.parseFlexibleDate(value, column.dateFormat || DEFAULT_DATE_FORMAT) === null) return alert("Invalid date");
-              if (!this.dataArray[dataIndex]) return alert(`Missing row: ${dataIndex}`);
-              this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column);
+        const el = e.target as HTMLInputElement;
+        const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
+        const dataIndex = parseInt(field.getAttribute("dataIndex"));
+        const column = this.columns[fieldIndex];
+        if (el.type === "checkbox") {
+          const newVal = field.checked;
+          if (column.isUnique || column.isNotNull) {
+            const candidate = [...this.dataArray[dataIndex]];
+            candidate[fieldIndex] = newVal;
+            try {
+              this._checkKeyConstraints(candidate, dataIndex);
+            } catch (err) {
+              if (!(err instanceof ValidationError)) throw err;
+              field.checked = !newVal; // revert visual state
+              this.showAlert(err.message, "error");
+              return;
             }
+          }
+          this.dataArray[dataIndex][fieldIndex] = newVal;
+        } else {
+          const value = field.value;
+          if (column.type === "number" && isNaN(parseFloat(value))) return alert("Invalid number");
+          if (column.type === "date" && this.parseFlexibleDate(value, column.dateFormat || DEFAULT_DATE_FORMAT) === null) return alert("Invalid date");
+          if (!this.dataArray[dataIndex]) return alert(`Missing row: ${dataIndex}`);
+          this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column);
+        }
         this.saveToStorage();
         // this.renderTable();
       });
@@ -1050,9 +1055,12 @@ export class DataEntryTable extends HTMLElement {
           <button type="button" class="close-x text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
         </header>
         <div class="px-6 py-4 max-h-[60vh] overflow-auto">
+          <p class="text-xs text-slate-500 mb-2">Drag the ⠿ handle to reorder columns. Click the eye icon to hide a column from the table (data stays put).</p>
           <table class="w-full text-sm">
             <thead>
               <tr class="text-left text-slate-600 border-b border-slate-200">
+                <th class="pb-2 w-6"></th>
+                <th class="pb-2 pr-2 font-medium text-center w-10"></th>
                 <th class="pb-2 pr-2 font-medium">Field</th>
                 <th class="pb-2 pr-2 font-medium">Label</th>
                 <th class="pb-2 pr-2 font-medium">Type</th>
@@ -1075,17 +1083,70 @@ export class DataEntryTable extends HTMLElement {
     `;
     dlg.querySelector(".title-name").textContent = tableName;
 
-    const tbody = dlg.querySelector(".rows");
-    this.columns.forEach((col, idx) => tbody.appendChild(this._buildColumnEditorRow(col, idx)));
+    const tbody = dlg.querySelector(".rows") as HTMLElement;
+    // Iterate displayOrder (all entries — hidden included so user can toggle them back on).
+    const order = this.displayOrder && this.displayOrder.length === this.columns.length ? this.displayOrder : this.columns.map((_, i) => i);
+    order.forEach((idx) => tbody.appendChild(this._buildColumnEditorRow(this.columns[idx], idx)));
 
     dlg.querySelector(".add-row").addEventListener("click", () => {
-      tbody.appendChild(this._buildColumnEditorRow({ field: "", name: "", type: "string", default: "", max: 0, isUnique: false, isNotNull: false }, null));
+      tbody.appendChild(this._buildColumnEditorRow({ field: "", name: "", type: "string", default: "", max: 0, isUnique: false, isNotNull: false, hidden: false }, null));
     });
 
-    // Delete row (event delegation)
+    // Delete row + toggle visibility (event delegation)
     tbody.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement).closest(".del");
-      if (btn) btn.closest("tr").remove();
+      const target = e.target as HTMLElement;
+      const delBtn = target.closest(".del");
+      if (delBtn) {
+        delBtn.closest("tr").remove();
+        return;
+      }
+      const eyeBtn = target.closest(".is-visible") as HTMLElement | null;
+      if (eyeBtn) {
+        const tr = eyeBtn.closest("tr") as HTMLElement;
+        const nowHidden = tr.dataset.hidden !== "true"; // toggle
+        tr.dataset.hidden = nowHidden ? "true" : "false";
+        const icon = eyeBtn.querySelector(".material-icons") as HTMLElement;
+        icon.textContent = nowHidden ? "visibility_off" : "visibility";
+        eyeBtn.setAttribute("title", nowHidden ? "Hidden — click to show in table" : "Visible — click to hide from table");
+      }
+    });
+
+    // Drag-to-reorder rows via HTML5 native drag. The drag handle's mousedown sets
+    // draggable on the parent <tr>; the <tr> handles the drag lifecycle.
+    let dragSrc: HTMLElement | null = null;
+    tbody.addEventListener("mousedown", (e) => {
+      const handle = (e.target as HTMLElement).closest(".drag-handle") as HTMLElement | null;
+      if (!handle) return;
+      const tr = handle.closest("tr") as HTMLElement;
+      if (tr) tr.setAttribute("draggable", "true");
+    });
+    tbody.addEventListener("dragstart", (e) => {
+      const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
+      if (!tr) return;
+      dragSrc = tr;
+      tr.style.opacity = "0.4";
+      // Firefox needs setData to start a drag.
+      e.dataTransfer?.setData("text/plain", "");
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    });
+    tbody.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (!dragSrc) return;
+      const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
+      if (!tr || tr === dragSrc || tr.parentElement !== tbody) return;
+      const rect = tr.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      tbody.insertBefore(dragSrc, before ? tr : tr.nextSibling);
+    });
+    const endDrag = () => {
+      if (dragSrc) dragSrc.style.opacity = "";
+      dragSrc = null;
+      tbody.querySelectorAll("tr[draggable]").forEach((tr) => tr.removeAttribute("draggable"));
+    };
+    tbody.addEventListener("dragend", endDrag);
+    tbody.addEventListener("drop", (e) => {
+      e.preventDefault();
+      endDrag();
     });
 
     const closeDialog = () => dlg.close();
@@ -1104,8 +1165,18 @@ export class DataEntryTable extends HTMLElement {
     const tr = document.createElement("tr");
     tr.className = "border-b border-slate-100 last:border-b-0 align-middle";
     if (originalIndex !== null && originalIndex !== undefined) tr.dataset.originalIndex = String(originalIndex);
+    const hidden = !!col.hidden;
+    tr.dataset.hidden = hidden ? "true" : "false";
     const inputCls = "w-full rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400";
+    const eyeIcon = hidden ? "visibility_off" : "visibility";
+    const eyeTitle = hidden ? "Hidden — click to show in table" : "Visible — click to hide from table";
     tr.innerHTML = `
+      <td class="py-2 text-center text-slate-400 select-none drag-handle cursor-grab" title="Drag to reorder">⠿</td>
+      <td class="py-2 pr-2 text-center">
+        <button type="button" class="is-visible align-middle cursor-pointer" title="${eyeTitle}">
+          <span class="material-icons text-lg leading-none">${eyeIcon}</span>
+        </button>
+      </td>
       <td class="py-2 pr-2"><input class="field ${inputCls}" value="${this._escapeHTML(col.field || "")}"></td>
       <td class="py-2 pr-2"><input class="name ${inputCls}" value="${this._escapeHTML(col.name || "")}"></td>
       <td class="py-2 pr-2">
@@ -1138,6 +1209,7 @@ export class DataEntryTable extends HTMLElement {
       return;
     }
 
+    // Working state in DIALOG order (= new display order).
     const working = rows.map((tr) => ({
       tr,
       _originalIndex: tr.dataset.originalIndex != null ? parseInt(tr.dataset.originalIndex, 10) : null,
@@ -1148,6 +1220,7 @@ export class DataEntryTable extends HTMLElement {
       max: parseInt((tr.querySelector(".max") as HTMLInputElement).value) || 0,
       isUnique: (tr.querySelector(".is-unique") as HTMLInputElement).checked,
       isNotNull: (tr.querySelector(".is-notnull") as HTMLInputElement).checked,
+      hidden: tr.dataset.hidden === "true",
     }));
 
     // 1. Validate field names
@@ -1171,38 +1244,87 @@ export class DataEntryTable extends HTMLElement {
       fieldSet.add(w.field);
     }
 
-    // 2. Build new column + data arrays in working order
-    const newColumns = working.map((w) => {
-      const orig = w._originalIndex !== null ? this.columns[w._originalIndex] : null;
-      return {
-        field: w.field,
-        name: w.name || w.field,
-        type: w.type,
-        default: w.default === "" ? null : w.default,
-        max: w.max,
-        dateFormat: orig?.dateFormat ?? null,
-        isUnique: w.isUnique,
-        isNotNull: w.isNotNull,
-      };
+    // 2. Physical column array stays sorted by original order — reorder is DISPLAY only.
+    //    Surviving original columns keep their slot in `columns` and `dataArray` (with shift
+    //    on deletion). Newly-added working rows append at the end of the physical array.
+    const survivingOld = new Set<number>();
+    working.forEach((w) => {
+      if (w._originalIndex !== null) survivingOld.add(w._originalIndex);
     });
 
-    const newDataArray = this.dataArray.map((oldRow) =>
-      working.map((w, newColIdx) => {
-        const newCol = newColumns[newColIdx];
-        if (w._originalIndex !== null) {
-          const oldVal = oldRow[w._originalIndex];
-          const origType = this.columns[w._originalIndex].type;
-          if (origType !== w.type && oldVal !== null && oldVal !== undefined) {
-            return this.serializeToDB(String(oldVal), newCol);
-          }
-          return oldVal === undefined ? null : oldVal;
-        }
-        // New column: seed every existing row with the serialized default (or null).
-        return newCol.default === null ? null : this.serializeToDB(String(newCol.default), newCol);
-      }),
-    );
+    // Map old physical index → new physical index (accounts for deletions shifting everything down).
+    const oldToNewIdx = new Map<number, number>();
+    let nextNewIdx = 0;
+    this.columns.forEach((_, oldIdx) => {
+      if (survivingOld.has(oldIdx)) {
+        oldToNewIdx.set(oldIdx, nextNewIdx++);
+      }
+    });
+    const survivorCount = nextNewIdx;
 
-    // 3. Constraint validation on the new state (inline scan — operates on newDataArray, not this.dataArray)
+    // Build newColumns. First fill surviving slots in original order with updated metadata
+    // from the matching working row. Then append new columns (working rows with no original).
+    const newColumns: any[] = new Array(survivorCount);
+    const wIdxToNewIdx: number[] = new Array(working.length);
+    working.forEach((w, wIdx) => {
+      if (w._originalIndex !== null) {
+        const newIdx = oldToNewIdx.get(w._originalIndex)!;
+        wIdxToNewIdx[wIdx] = newIdx;
+        const orig = this.columns[w._originalIndex];
+        newColumns[newIdx] = {
+          field: w.field,
+          name: w.name || w.field,
+          type: w.type,
+          default: w.default === "" ? null : w.default,
+          max: w.max,
+          dateFormat: orig?.dateFormat ?? null,
+          isUnique: w.isUnique,
+          isNotNull: w.isNotNull,
+          hidden: w.hidden,
+        };
+      }
+    });
+    working.forEach((w, wIdx) => {
+      if (w._originalIndex === null) {
+        const newIdx = newColumns.length;
+        wIdxToNewIdx[wIdx] = newIdx;
+        newColumns.push({
+          field: w.field,
+          name: w.name || w.field,
+          type: w.type,
+          default: w.default === "" ? null : w.default,
+          max: w.max,
+          dateFormat: null,
+          isUnique: w.isUnique,
+          isNotNull: w.isNotNull,
+          hidden: w.hidden,
+        });
+      }
+    });
+
+    // Build newDataArray: each row laid out in newColumns physical order.
+    const newDataArray = this.dataArray.map((oldRow) => {
+      const newRow = new Array(newColumns.length);
+      // Copy surviving columns from oldRow (re-serialize on type change).
+      oldToNewIdx.forEach((newIdx, oldIdx) => {
+        const newCol = newColumns[newIdx];
+        const oldVal = oldRow[oldIdx];
+        const origType = this.columns[oldIdx].type;
+        if (origType !== newCol.type && oldVal !== null && oldVal !== undefined) {
+          newRow[newIdx] = this.serializeToDB(String(oldVal), newCol);
+        } else {
+          newRow[newIdx] = oldVal === undefined ? null : oldVal;
+        }
+      });
+      // Seed newly-appended columns with their default.
+      for (let i = survivorCount; i < newColumns.length; i++) {
+        const c = newColumns[i];
+        newRow[i] = c.default === null || c.default === undefined ? null : this.serializeToDB(String(c.default), c);
+      }
+      return newRow;
+    });
+
+    // 3. Constraint validation on the new state.
     for (let colIdx = 0; colIdx < newColumns.length; colIdx++) {
       const col = newColumns[colIdx];
       if (!col.isUnique && !col.isNotNull) continue;
@@ -1223,19 +1345,29 @@ export class DataEntryTable extends HTMLElement {
         const parts = [];
         if (emptyCount) parts.push(`${emptyCount} empty value${emptyCount > 1 ? "s" : ""}`);
         if (dupCount) parts.push(`${dupCount} duplicate value${dupCount > 1 ? "s" : ""}`);
-        flagRow(working[colIdx].tr);
+        // Find the dialog row whose new physical index is `colIdx` so we can flag it.
+        const wIdx = wIdxToNewIdx.indexOf(colIdx);
+        if (wIdx >= 0) flagRow(working[wIdx].tr);
         this.showAlert(`Cannot apply constraints to "${col.name}": ${parts.join(", ")}. Clean the data first.`, "error");
         return;
       }
     }
 
-    // 4. Apply
+    // 4. displayOrder: dialog (working) row order, mapped to new physical indices.
+    const newDisplayOrder = working.map((_, wIdx) => wIdxToNewIdx[wIdx]);
+
+    // 5. Remap sortColumn (it stored an old physical index).
+    let newSortColumn = -1;
+    if (this.sortColumn !== -1 && oldToNewIdx.has(this.sortColumn)) {
+      newSortColumn = oldToNewIdx.get(this.sortColumn)!;
+    }
+
+    // 6. Apply
     this.columns = newColumns;
     this.dataArray = newDataArray;
-    if (this.sortColumn >= newColumns.length) {
-      this.sortColumn = -1;
-      this.sortDirection = "asc";
-    }
+    this.displayOrder = newDisplayOrder;
+    this.sortColumn = newSortColumn;
+    if (newSortColumn === -1) this.sortDirection = "asc";
     this.filters = new Array(newColumns.length).fill("");
     this.saveToStorage();
     this.renderTable();
@@ -1321,6 +1453,7 @@ export class DataEntryTable extends HTMLElement {
       elementRect: this.elementRect,
       sortColumn: this.sortColumn,
       sortDirection: this.sortDirection,
+      displayOrder: this.displayOrder,
     };
 
     try {
@@ -1334,7 +1467,7 @@ export class DataEntryTable extends HTMLElement {
   loadFromStorage() {
     try {
       // Load saved data
-      const savedData = /** @type {any} */ (window.store.get(this.storageKey));
+      const savedData = window.store.get(this.storageKey) as any;
       if (savedData) {
         const savedState = savedData;
         this.dataArray = savedState.dataArray;
@@ -1343,6 +1476,9 @@ export class DataEntryTable extends HTMLElement {
         this.sortColumn = savedState.sortColumn || -1;
         this.sortDirection = savedState.sortDirection || "asc";
         this.filters = new Array(this.columns.length).fill("");
+        // Backward compat: older stored tables don't have displayOrder; default to identity.
+        const saved = savedState.displayOrder;
+        this.displayOrder = Array.isArray(saved) && saved.length === this.columns.length ? saved.slice() : this.columns.map((_, i) => i);
       }
     } catch (e) {
       if (e instanceof Error) console.error("Data could not be loaded: " + e.message);
