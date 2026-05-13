@@ -1,3 +1,4 @@
+import "./styles.css";
 import "jspanel4/dist/jspanel.min.css";
 import { jsPanel } from "jspanel4/es6module/jspanel.js";
 import "jspanel4/es6module/extensions/hint/jspanel.hint.js";

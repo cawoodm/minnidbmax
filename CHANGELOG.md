@@ -2,6 +2,9 @@
 
 Grouped by day, derived from full git history. Most recent first.
 
+## 2026-05-13
+- Tailwind header (v0.0.16)
+
 ## 2026-05-12
 
 - Migrated the window manager from WinBox to **jsPanel** (v0.0.11).

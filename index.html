@@ -4,14 +4,28 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link type="image/png" sizes="96x96" rel="icon" href="favicon.png" />
-    <title>MinniDBMax v0.0.14</title>
+    <title>MinniDBMax v0.0.15</title>
   </head>
   <body>
-    <select id="workspaceSelect"></select>
-    <button id="addTable">+ New Table</button>
-    <button id="dataPush">⬆️ Push Data</button>
-    <button id="dataPull">⬇️ Pull Data</button>
-    <button id="dataDump">🗃️ Dump Data</button>
+    <header class="flex items-center justify-between gap-4 px-4 py-2 bg-slate-800 text-white shadow-md">
+      <div class="flex items-center gap-3">
+        <h1 class="text-lg font-semibold tracking-wide">MinniDBMax</h1>
+        <span class="text-xs text-slate-400">v0.0.16</span>
+        <select id="workspaceSelect" class="bg-slate-700 text-white rounded px-2 py-1 text-sm border border-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400"></select>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="addTable" class="rounded bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm font-medium transition-colors">+ New Table</button>
+        <button id="dataPush" class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm transition-colors inline-flex items-center gap-1.5" title="Push data to Gist">
+          <span class="material-icons text-lg leading-none">cloud_upload</span>Push
+        </button>
+        <button id="dataPull" class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm transition-colors inline-flex items-center gap-1.5" title="Pull data from Gist">
+          <span class="material-icons text-lg leading-none">cloud_download</span>Pull
+        </button>
+        <button id="dataDump" class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm transition-colors inline-flex items-center gap-1.5" title="Dump data to file">
+          <span class="material-icons text-lg leading-none">archive</span>Dump
+        </button>
+      </div>
+    </header>
 
     <style>
       #empty-state {

@@ -49,6 +49,10 @@ Throughout the UI, columns are described by the colon-delimited string `field:la
 
 `src/app.ts` is TypeScript; `data-table.js`, `data-store.js`, `syncher-gist.js`, `gist.js` are JS with JSDoc type annotations. Vite handles both. The root `jsconfig.json` is legacy — `tsconfig.json` is the active config.
 
+### Tailwind
+
+Tailwind v4 is wired in via the `@tailwindcss/vite` plugin (configured in `vite.config.ts`) and `src/styles.css` (`@import "tailwindcss";`), which `src/app.ts` imports. Tailwind only styles the page-level `<header>` in `index.html` — Shadow DOM table styles (in `<template id="data-entry-template">`) and jsPanel chrome are unaffected. Tailwind classes won't reach inside Shadow DOM by design.
+
 ## Things not to break
 
 - `index.html` lives at the repo root (Vite's default entry). The git status shows a deleted `src/index.html` from a recent reorganization — don't restore it.
