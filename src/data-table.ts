@@ -378,6 +378,7 @@ export class DataEntryTable extends HTMLElement {
         isUnique: false,
         isNotNull: false,
         hidden: false,
+        width: null,
       };
       if (headers) {
         const fieldMeta = (headers[index] + ":::::").split(":");
@@ -614,7 +615,22 @@ export class DataEntryTable extends HTMLElement {
   }
 
   _buildTableHTML() {
-    return `<table>${this._buildHeadHTML()}<tbody>${this._buildBodyHTML()}</tbody></table>`;
+    const visible = this._visibleColumnIndices();
+    const anyWidth = visible.some((i) => this.columns[i].width);
+    const tableStyle = anyWidth ? ' style="table-layout:fixed"' : "";
+    return `<table${tableStyle}>${this._buildColGroupHTML()}${this._buildHeadHTML()}<tbody>${this._buildBodyHTML()}</tbody></table>`;
+  }
+
+  _buildColGroupHTML() {
+    const visible = this._visibleColumnIndices();
+    let html = "<colgroup><col>"; // first col = row-actions gutter (24px from CSS)
+    visible.forEach((index) => {
+      const w = this.columns[index].width;
+      const style = w ? ` style="width:${w}px"` : "";
+      html += `<col data-col-index="${index}"${style}>`;
+    });
+    html += "</colgroup>";
+    return html;
   }
 
   _buildHeadHTML() {
@@ -636,7 +652,7 @@ export class DataEntryTable extends HTMLElement {
         flagTitles.push("Not null");
       }
       const keyIcon = flagSyms.length ? `<span class="key-indicator" title="${flagTitles.join(", ")}">${flagSyms.join("")}</span>` : "";
-      html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}</th>`;
+      html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}<span class="col-resizer" data-resize-index="${index}"></span></th>`;
     });
     html += "</tr>";
     html +=
@@ -917,13 +933,15 @@ export class DataEntryTable extends HTMLElement {
       });
     });
 
-    // Header click for sorting (only data-column headers, not the row-actions gutter or the + add-column)
-    const headers = this.shadowRoot.querySelectorAll("th[data-index]");
+    // Header click for sorting (only data-column headers, not the row-actions gutter)
+    const headers = this.shadowRoot.querySelectorAll("th[data-index]") as NodeListOf<HTMLElement>;
     headers.forEach((header) => {
       header.addEventListener("click", (e) => {
         // Suppress click on column name or dblclick event is not fired
         let el = e.target as HTMLElement;
         if (el.classList.contains("column-name")) return;
+        // Resize handle clicks must never sort.
+        if (el.classList.contains("col-resizer")) return;
 
         const columnIndex = parseInt(header.getAttribute("data-index"));
 
@@ -942,6 +960,112 @@ export class DataEntryTable extends HTMLElement {
         this.renderTable();
       });
     });
+
+    // Column resize — drag the .col-resizer to widen/narrow a column. Document-level
+    // mousemove/mouseup so dragging past the table edge keeps tracking.
+    this.shadowRoot.querySelectorAll(".col-resizer").forEach((handle) => {
+      handle.addEventListener("mousedown", (e) => {
+        const ev = e as MouseEvent;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const colIdx = parseInt((handle as HTMLElement).getAttribute("data-resize-index"));
+        const th = (handle as HTMLElement).closest("th") as HTMLElement;
+        const startX = ev.clientX;
+        const startWidth = th.offsetWidth;
+
+        // Capture current displayed widths of every visible column so flipping to
+        // table-layout:fixed doesn't snap siblings to auto-distributed widths.
+        const visible = this._visibleColumnIndices();
+        const startWidths = new Map<number, number>();
+        visible.forEach((i) => {
+          const t = this.shadowRoot.querySelector(`th[data-index="${i}"]`) as HTMLElement | null;
+          if (t) startWidths.set(i, t.offsetWidth);
+        });
+
+        const liveCol = this.shadowRoot.querySelector(`colgroup col[data-col-index="${colIdx}"]`) as HTMLElement | null;
+        const onMove = (mv: MouseEvent) => {
+          const newWidth = Math.max(40, startWidth + (mv.clientX - startX));
+          if (liveCol) liveCol.style.width = newWidth + "px";
+        };
+        const onUp = (mu: MouseEvent) => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          const finalWidth = Math.max(40, startWidth + (mu.clientX - startX));
+          // Commit widths: dragged column → final; others → their captured starting width
+          // (so the first resize doesn't snap them).
+          visible.forEach((i) => {
+            this.columns[i].width = i === colIdx ? finalWidth : startWidths.get(i) || this.columns[i].width || null;
+          });
+          this.saveToStorage();
+          this.renderTable();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    });
+
+    // Column reorder — HTML5 drag on the column header. Resize handle takes precedence
+    // (its mousedown.stopPropagation + the dragstart bail-out below).
+    let dragSrcIdx: number | null = null;
+    headers.forEach((th) => {
+      th.setAttribute("draggable", "true");
+      th.addEventListener("dragstart", (e) => {
+        const target = e.target as HTMLElement;
+        if (target.classList.contains("col-resizer")) {
+          e.preventDefault();
+          return;
+        }
+        dragSrcIdx = parseInt(th.getAttribute("data-index"));
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", String(dragSrcIdx));
+        }
+        th.classList.add("col-dragging");
+      });
+      th.addEventListener("dragover", (e) => {
+        if (dragSrcIdx === null) return;
+        e.preventDefault();
+        const rect = th.getBoundingClientRect();
+        const before = (e as DragEvent).clientX < rect.left + rect.width / 2;
+        th.classList.toggle("drop-before", before);
+        th.classList.toggle("drop-after", !before);
+      });
+      th.addEventListener("dragleave", () => {
+        th.classList.remove("drop-before", "drop-after");
+      });
+      th.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (dragSrcIdx === null) return;
+        const dstIdx = parseInt(th.getAttribute("data-index"));
+        const before = th.classList.contains("drop-before");
+        th.classList.remove("drop-before", "drop-after");
+        const src = dragSrcIdx;
+        dragSrcIdx = null;
+        this._reorderDisplayOrder(src, dstIdx, before);
+      });
+      th.addEventListener("dragend", () => {
+        th.classList.remove("col-dragging");
+        headers.forEach((h) => h.classList.remove("drop-before", "drop-after"));
+        dragSrcIdx = null;
+      });
+    });
+  }
+
+  // Move physical column index src to a new position in displayOrder relative to
+  // physical column index dst. Doesn't touch this.columns or this.dataArray —
+  // reorder is display-only.
+  _reorderDisplayOrder(src: number, dst: number, before: boolean) {
+    if (src === dst) return;
+    const order = (this.displayOrder && this.displayOrder.length === this.columns.length ? this.displayOrder : this.columns.map((_, i) => i)).slice();
+    const srcPos = order.indexOf(src);
+    if (srcPos < 0) return;
+    order.splice(srcPos, 1);
+    const dstPos = order.indexOf(dst);
+    if (dstPos < 0) return;
+    order.splice(before ? dstPos : dstPos + 1, 0, src);
+    this.displayOrder = order;
+    this.saveToStorage();
+    this.renderTable();
   }
 
   _attachBodyListeners() {
@@ -1281,6 +1405,7 @@ export class DataEntryTable extends HTMLElement {
           isUnique: w.isUnique,
           isNotNull: w.isNotNull,
           hidden: w.hidden,
+          width: orig?.width ?? null,
         };
       }
     });
@@ -1298,6 +1423,7 @@ export class DataEntryTable extends HTMLElement {
           isUnique: w.isUnique,
           isNotNull: w.isNotNull,
           hidden: w.hidden,
+          width: null,
         });
       }
     });

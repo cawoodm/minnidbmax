@@ -8,6 +8,7 @@ Grouped by day, derived from full git history. Most recent first
 - Import entire DB (v0.0.17)
 - Filter as you type (v0.0.18)
 - Hide and reorder columns (v0.0.19).
+- Drag & drop and resize columns (v0.0.20).
 
 ## 2026-05-12
 

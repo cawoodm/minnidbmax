@@ -266,9 +266,12 @@ function onPageDragleave(e: DragEvent) {
 }
 
 function onPageDragover(e: DragEvent) {
-  e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  // Only intercept file drags. Setting dropEffect="copy" on non-file drags (e.g.
+  // column-header reorder, which sets effectAllowed="move") makes the browser
+  // cancel the drop because move/copy don't match — the drop event never fires.
   if (!e.dataTransfer?.types.includes("Files")) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
   ensureDropOverlays();
   // Highlight the panel under the cursor (if any) instead of the whole page.
   const panelEl = e.composedPath().find((n) => (n as Element).classList?.contains("jsPanel")) as Element | undefined;
@@ -287,6 +290,9 @@ function onPageDragover(e: DragEvent) {
 }
 
 async function onPageDrop(e: DragEvent) {
+  // Same gate as onPageDragover: ignore non-file drops so in-app drags (column
+  // reorder, dialog row reorder) reach their own handlers untouched.
+  if (!e.dataTransfer?.types.includes("Files")) return;
   e.preventDefault();
   hideDropOverlays();
   if (await tryJsonDrop(e, { store, displayTables })) return;
