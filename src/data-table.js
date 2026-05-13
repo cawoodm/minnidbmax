@@ -1,6 +1,7 @@
 "use strict";
 
 import { jsPanel } from "jspanel4/es6module/jspanel.js";
+import { showAlert as _showAlert } from "./show-alert.js";
 
 // Fallback when a column has no unambiguous date value to infer DMY vs MDY from.
 // Switzerland/EU convention: day-month-year.
@@ -12,8 +13,6 @@ export class DataEntryTable extends HTMLElement {
 
     // Initialize Shadow DOM
     this.attachShadow({ mode: "open" });
-
-    //this.shadowRoot = /** @type {!ShadowRoot} */ (this.shadowRoot);
 
     const template = /** @type {!HTMLTemplateElement} */ (document.getElementById("data-entry-template"));
     this.shadowRoot.appendChild(template.content.cloneNode(true));
@@ -81,13 +80,6 @@ export class DataEntryTable extends HTMLElement {
     this.renderTable();
   }
 
-  createdCallback(options) {
-    return; // Doesn't work
-    options.width = this.elementRect.width;
-    options.height = this.elementRect.height;
-    options.x = this.elementRect.x;
-    options.y = this.elementRect.y;
-  }
   resizedCallback(w, h) {
     if (h < 40) return; // Minimum height
     this.elementRect.width = w;
@@ -388,6 +380,8 @@ export class DataEntryTable extends HTMLElement {
       return col;
     });
     this.filters = new Array(this.columns.length).fill("");
+    // Tell listeners (e.g. app.ts) that columns just got auto-detected, so the editor dialog can auto-open.
+    this.dispatchEvent(new CustomEvent("columns-established", { bubbles: true, composed: true }));
   }
 
   // Parse the comma-separated flags segment of the column mini-language.
@@ -572,7 +566,7 @@ export class DataEntryTable extends HTMLElement {
   _buildTableHTML() {
     const total = this._displayData.length;
     const useVirtual = total > DataEntryTable.VIRTUALIZE_THRESHOLD;
-    const colSpan = this.columns.length + 2;
+    const colSpan = this.columns.length + 1;
 
     let firstVisible = 0;
     let lastVisible = total;
@@ -602,12 +596,11 @@ export class DataEntryTable extends HTMLElement {
       const keyIcon = flagSyms.length ? `<span class="key-indicator" title="${flagTitles.join(", ")}">${flagSyms.join("")}</span>` : "";
       html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}</th>`;
     });
-    html += '<th class="add-column" title="Add new column">+</th></tr></thead><tbody>';
 
     html +=
       `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}"><td></td>` +
       this.columns.map((col, index) => `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index]}"/></td>`).join(" ") +
-      "<td></td></tr>";
+      "</tr>";
 
     if (firstVisible > 0) {
       html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${firstVisible * this._rowHeight}px"></td></tr>`;
@@ -650,7 +643,7 @@ export class DataEntryTable extends HTMLElement {
       }
       html += `<td class="${classNames.join(" ")}" dataIndex="${originalIndex}" fieldIndex="${cellIndex}">${cellInner}</td>`;
     });
-    html += "<td></td></tr>";
+    html += "</tr>";
     return html;
   }
 
@@ -905,73 +898,6 @@ export class DataEntryTable extends HTMLElement {
         this.renderTable();
       });
     });
-    this.shadowRoot.querySelector("th.add-column").addEventListener("click", (e) => {
-      let f = prompt("Enter new column (field:name:type:default:max:flags)");
-      if (!f) return;
-      let fieldMeta = (f + ":::::").split(":");
-      let field = fieldMeta[0];
-      let name = fieldMeta[1] || this._toTitleCase(field);
-      let defaultValue = fieldMeta[3];
-      let type = fieldMeta[2] || this.detectType(defaultValue || "");
-      let max = parseInt(fieldMeta[4]) || 0;
-      const flags = this._parseColumnFlags(fieldMeta[5] || "");
-      const serializedDefault = this.serializeToDB(defaultValue, { type, dateFormat: DEFAULT_DATE_FORMAT });
-      // notnull on a new column with no default would instantly violate existing rows — refuse.
-      if (flags.isNotNull && (serializedDefault === null || serializedDefault === "") && this.dataArray.length > 0) {
-        this.showAlert(`Cannot add "${name}" as not-null: ${this.dataArray.length} existing rows would have empty values. Provide a non-null default.`, "error");
-        return;
-      }
-      this.columns.push({ field, name, type, default: null, max, dateFormat: null, isUnique: flags.isUnique, isNotNull: flags.isNotNull });
-      this.dataArray.forEach((row) => {
-        row.push(serializedDefault);
-      });
-      this.saveToStorage();
-      this.renderTable();
-    });
-
-    // Column name editing
-    const columnNameSpans = this.shadowRoot.querySelectorAll(".column-name");
-    columnNameSpans.forEach((span) => {
-      span.addEventListener("dblclick", (e) => {
-        e.stopPropagation(); // Prevent sorting when editing column name
-        const columnIndex = parseInt(span.getAttribute("data-index"));
-        const column = this.columns[columnIndex];
-        const currentName = column.name;
-
-        // Create an editable input
-        const input = document.createElement("input");
-        input.type = "text";
-        input.placeholder = "Rename: field:name:type:default:maxlength:flags";
-        input.title = input.placeholder;
-        const flagTokens = [];
-        if (column.isUnique) flagTokens.push("unique");
-        if (column.isNotNull) flagTokens.push("notnull");
-        input.value = column.field + ":" + column.name + ":" + column.type + ":" + (column.default || "") + ":" + (column.max || 0) + ":" + flagTokens.join(",");
-        input.style.minWidth = Math.max(300, input.value.length * 5) + "px";
-        input.style.width = "100%";
-        input.style.padding = "2px";
-        input.style.boxSizing = "border-box";
-
-        // Replace span with input
-        const th = span.parentNode;
-        th.replaceChild(input, span);
-        input.focus();
-
-        input.addEventListener("click", (e) => {
-          e.stopPropagation(); // Prevent sorting when clicking on input
-        });
-        input.addEventListener("keyup", (e) => {
-          if (e.key === "Escape") {
-            th.replaceChild(span, input);
-          }
-        });
-        input.addEventListener("keypress", (e) => {
-          if (e.key === "Enter") {
-            this.saveColumnName(columnIndex, input.value);
-          }
-        });
-      });
-    });
 
     // Row-action ellipsis: opens an inline jsPanel context menu.
     this.shadowRoot.querySelectorAll(".row-menu").forEach((btn) => {
@@ -1024,6 +950,211 @@ export class DataEntryTable extends HTMLElement {
         cm.addEventListener("mouseleave", () => cm.close());
       },
     });
+  }
+
+  // Open the column-definition editor dialog. Lives in document.body (outside Shadow DOM)
+  // so the global Tailwind stylesheet applies.
+  openColumnEditor() {
+    const tableName = (this.storageKey || "").replace(/\.table\.json$/, "") || "table";
+    const dlg = document.createElement("dialog");
+    dlg.className = "rounded-lg shadow-xl p-0 bg-white backdrop:bg-black/40 max-w-4xl w-[90vw]";
+    dlg.innerHTML = `
+      <form method="dialog" class="flex flex-col">
+        <header class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h3 class="text-lg font-semibold text-slate-800">Edit columns — <span class="title-name"></span></h3>
+          <button type="button" class="close-x text-slate-400 hover:text-slate-700 text-2xl leading-none">×</button>
+        </header>
+        <div class="px-6 py-4 max-h-[60vh] overflow-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-600 border-b border-slate-200">
+                <th class="pb-2 pr-2 font-medium">Field</th>
+                <th class="pb-2 pr-2 font-medium">Label</th>
+                <th class="pb-2 pr-2 font-medium">Type</th>
+                <th class="pb-2 pr-2 font-medium">Default</th>
+                <th class="pb-2 pr-2 font-medium w-20">Max</th>
+                <th class="pb-2 pr-2 font-medium text-center w-10" title="Unique">U</th>
+                <th class="pb-2 pr-2 font-medium text-center w-10" title="Not null">!</th>
+                <th class="pb-2 w-8"></th>
+              </tr>
+            </thead>
+            <tbody class="rows"></tbody>
+          </table>
+          <button type="button" class="add-row mt-3 text-sm text-blue-600 hover:text-blue-500">+ Add column</button>
+        </div>
+        <footer class="flex justify-end gap-2 px-6 py-4 border-t border-slate-200 bg-slate-50">
+          <button type="button" class="cancel rounded bg-slate-200 hover:bg-slate-300 px-4 py-1.5 text-sm">Cancel</button>
+          <button type="button" class="save rounded bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 text-sm font-medium">Save</button>
+        </footer>
+      </form>
+    `;
+    dlg.querySelector(".title-name").textContent = tableName;
+
+    const tbody = dlg.querySelector(".rows");
+    this.columns.forEach((col, idx) => tbody.appendChild(this._buildColumnEditorRow(col, idx)));
+
+    dlg.querySelector(".add-row").addEventListener("click", () => {
+      tbody.appendChild(this._buildColumnEditorRow({ field: "", name: "", type: "string", default: "", max: 0, isUnique: false, isNotNull: false }, null));
+    });
+
+    // Delete row (event delegation)
+    tbody.addEventListener("click", (e) => {
+      const btn = e.target.closest(".del");
+      if (btn) btn.closest("tr").remove();
+    });
+
+    const closeDialog = () => dlg.close();
+    dlg.querySelector(".cancel").addEventListener("click", closeDialog);
+    dlg.querySelector(".close-x").addEventListener("click", closeDialog);
+
+    dlg.querySelector(".save").addEventListener("click", () => this._applyColumnEditor(dlg, tbody));
+
+    // Auto-cleanup so successive opens don't accumulate detached <dialog>s.
+    dlg.addEventListener("close", () => dlg.remove());
+    document.body.appendChild(dlg);
+    dlg.showModal();
+  }
+
+  _buildColumnEditorRow(col, originalIndex) {
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-slate-100 last:border-b-0 align-middle";
+    if (originalIndex !== null && originalIndex !== undefined) tr.dataset.originalIndex = String(originalIndex);
+    const inputCls = "w-full rounded border border-slate-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400";
+    tr.innerHTML = `
+      <td class="py-2 pr-2"><input class="field ${inputCls}" value="${this._escapeHTML(col.field || "")}"></td>
+      <td class="py-2 pr-2"><input class="name ${inputCls}" value="${this._escapeHTML(col.name || "")}"></td>
+      <td class="py-2 pr-2">
+        <select class="type rounded border border-slate-300 px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+          <option value="string">string</option>
+          <option value="number">number</option>
+          <option value="date">date</option>
+          <option value="boolean">boolean</option>
+        </select>
+      </td>
+      <td class="py-2 pr-2"><input class="default ${inputCls}" value="${this._escapeHTML(col.default == null ? "" : String(col.default))}"></td>
+      <td class="py-2 pr-2"><input type="number" min="0" class="max ${inputCls}" value="${col.max || 0}"></td>
+      <td class="py-2 pr-2 text-center"><input type="checkbox" class="is-unique accent-blue-600" ${col.isUnique ? "checked" : ""}></td>
+      <td class="py-2 pr-2 text-center"><input type="checkbox" class="is-notnull accent-blue-600" ${col.isNotNull ? "checked" : ""}></td>
+      <td class="py-2 text-right"><button type="button" class="del text-slate-400 hover:text-red-500 text-xl leading-none" title="Delete column">×</button></td>
+    `;
+    tr.querySelector(".type").value = col.type || "string";
+    return tr;
+  }
+
+  // Validate the working state, build new column + data arrays, run constraint checks,
+  // and apply on success. Flags offending rows red and aborts on the first failure.
+  _applyColumnEditor(dlg, tbody) {
+    const flagRow = (tr) => tr.classList.add("bg-red-50", "ring-1", "ring-red-300");
+    tbody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("bg-red-50", "ring-1", "ring-red-300"));
+
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    if (rows.length === 0) {
+      this.showAlert("Table must have at least one column", "error");
+      return;
+    }
+
+    const working = rows.map((tr) => ({
+      tr,
+      _originalIndex: tr.dataset.originalIndex != null ? parseInt(tr.dataset.originalIndex, 10) : null,
+      field: tr.querySelector(".field").value.trim(),
+      name: tr.querySelector(".name").value.trim(),
+      type: tr.querySelector(".type").value,
+      default: tr.querySelector(".default").value,
+      max: parseInt(tr.querySelector(".max").value) || 0,
+      isUnique: tr.querySelector(".is-unique").checked,
+      isNotNull: tr.querySelector(".is-notnull").checked,
+    }));
+
+    // 1. Validate field names
+    const fieldSet = new Set();
+    for (const w of working) {
+      if (!w.field) {
+        flagRow(w.tr);
+        this.showAlert("Field name cannot be empty", "error");
+        return;
+      }
+      if (!/^[a-zA-Z_][\w]*$/.test(w.field)) {
+        flagRow(w.tr);
+        this.showAlert(`Invalid field name: "${w.field}" (use letters, digits, underscore; must start with a letter or underscore)`, "error");
+        return;
+      }
+      if (fieldSet.has(w.field)) {
+        flagRow(w.tr);
+        this.showAlert(`Duplicate field name: "${w.field}"`, "error");
+        return;
+      }
+      fieldSet.add(w.field);
+    }
+
+    // 2. Build new column + data arrays in working order
+    const newColumns = working.map((w) => {
+      const orig = w._originalIndex !== null ? this.columns[w._originalIndex] : null;
+      return {
+        field: w.field,
+        name: w.name || w.field,
+        type: w.type,
+        default: w.default === "" ? null : w.default,
+        max: w.max,
+        dateFormat: orig?.dateFormat ?? null,
+        isUnique: w.isUnique,
+        isNotNull: w.isNotNull,
+      };
+    });
+
+    const newDataArray = this.dataArray.map((oldRow) =>
+      working.map((w, newColIdx) => {
+        const newCol = newColumns[newColIdx];
+        if (w._originalIndex !== null) {
+          const oldVal = oldRow[w._originalIndex];
+          const origType = this.columns[w._originalIndex].type;
+          if (origType !== w.type && oldVal !== null && oldVal !== undefined) {
+            return this.serializeToDB(String(oldVal), newCol);
+          }
+          return oldVal === undefined ? null : oldVal;
+        }
+        // New column: seed every existing row with the serialized default (or null).
+        return newCol.default === null ? null : this.serializeToDB(String(newCol.default), newCol);
+      }),
+    );
+
+    // 3. Constraint validation on the new state (inline scan — operates on newDataArray, not this.dataArray)
+    for (let colIdx = 0; colIdx < newColumns.length; colIdx++) {
+      const col = newColumns[colIdx];
+      if (!col.isUnique && !col.isNotNull) continue;
+      let emptyCount = 0;
+      let dupCount = 0;
+      const seen = new Map();
+      for (let i = 0; i < newDataArray.length; i++) {
+        const v = newDataArray[i][colIdx];
+        const isEmpty = v === null || v === undefined || v === "";
+        if (col.isNotNull && isEmpty) emptyCount++;
+        if (col.isUnique && !isEmpty) {
+          const c = (seen.get(v) || 0) + 1;
+          seen.set(v, c);
+          if (c === 2) dupCount++;
+        }
+      }
+      if (emptyCount || dupCount) {
+        const parts = [];
+        if (emptyCount) parts.push(`${emptyCount} empty value${emptyCount > 1 ? "s" : ""}`);
+        if (dupCount) parts.push(`${dupCount} duplicate value${dupCount > 1 ? "s" : ""}`);
+        flagRow(working[colIdx].tr);
+        this.showAlert(`Cannot apply constraints to "${col.name}": ${parts.join(", ")}. Clean the data first.`, "error");
+        return;
+      }
+    }
+
+    // 4. Apply
+    this.columns = newColumns;
+    this.dataArray = newDataArray;
+    if (this.sortColumn >= newColumns.length) {
+      this.sortColumn = -1;
+      this.sortDirection = "asc";
+    }
+    this.filters = new Array(newColumns.length).fill("");
+    this.saveToStorage();
+    this.renderTable();
+    dlg.close();
   }
 
   _toTitleCase(str) {
@@ -1133,19 +1264,11 @@ export class DataEntryTable extends HTMLElement {
     }
   }
 
-  // Show alert message via jsPanel's hint extension (top-right corner of viewport)
+  // Per-table wrapper around the shared toast primitive (src/show-alert.ts).
+  // Adds the table name as the toast header so users can see which table fired the notification.
   showAlert(message, type = "success") {
-    const themeMap = { success: "success", error: "danger" };
     const tableName = (this.storageKey || "").replace(/\.table\.json$/, "");
-    jsPanel.hint.create({
-      headerTitle: tableName || "Notice",
-      content: `<div style="padding:10px 14px;">${message}</div>`,
-      theme: themeMap[type] || "info",
-      position: "center-top 0 15 down",
-      //position: { my: "right-top", at: "right-top", offsetX: -20, offsetY: 20 },
-      panelSize: { width: 320, height: "auto" },
-      autoclose: 5000,
-    });
+    _showAlert(message, type, tableName || "Notice");
   }
 
   refresh() {

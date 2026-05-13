@@ -1,11 +1,12 @@
-import "./styles.css";
 import "jspanel4/dist/jspanel.min.css";
-import { jsPanel } from "jspanel4/es6module/jspanel.js";
 import "jspanel4/es6module/extensions/hint/jspanel.hint.js";
+import { jsPanel } from "jspanel4/es6module/jspanel.js";
 import "material-icons/iconfont/filled.css";
+import "./styles.css";
+import { showAlert } from "./show-alert";
 
 addEventListener("error", function (e) {
-  alert(e.message);
+  showAlert(e.message, "error");
   // console.error(e.error.stack);
 });
 
@@ -46,15 +47,15 @@ const syncher = SyncherGist(gistUsername, gistToken, gistId, store);
 
 function syncherValidate() {
   if (!gistUsername) {
-    alert(`Please set your Git username in browser store with key '/minnidbmax/${workspace}/.gist-user'.`);
+    showAlert(`Please set your Git username in browser store with key '/minnidbmax/${workspace}/.gist-user'.`, "error", "Gist sync");
     return false;
   }
   if (!gistToken) {
-    alert(`Please set your Gist token in browser store with key '/minnidbmax/${workspace}/.gist-token'.`);
+    showAlert(`Please set your Gist token in browser store with key '/minnidbmax/${workspace}/.gist-token'.`, "error", "Gist sync");
     return false;
   }
   if (!gistId) {
-    alert(`Please set your Gist token in browser store with key '/minnidbmax/${workspace}/.gist-id'.`);
+    showAlert(`Please set your Gist id in browser store with key '/minnidbmax/${workspace}/.gist-id'.`, "error", "Gist sync");
     return false;
   }
   return true;
@@ -73,7 +74,7 @@ async function dataPull() {
     displayTables();
   } catch (e) {
     if (e instanceof Error) {
-      alert("Error loading data from Gist: " + e.message);
+      showAlert("Error loading data from Gist: " + e.message, "error", "Gist sync");
     }
     console.error(e);
   }
@@ -138,7 +139,7 @@ function addTable() {
   if (!title) return;
   let code = title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
   if (store.get(code + ".table.json")) {
-    alert("Table with this name already exists. Please choose a different name.");
+    showAlert("Table with this name already exists. Please choose a different name.", "error");
     return;
   }
   createTable(code, null);
@@ -174,7 +175,7 @@ function createTable(code, data) {
     onmaximized: newTable.maximizedCallback.bind(newTable),
     onnormalized: newTable.restoredCallback.bind(newTable),
     callback: (p: any) => {
-      // https://ionic.io/ionicons
+      // https://fonts.google.com/icons?icon.query=minimize&icon.size=24&icon.color=%23e3e3e3
       p.addControl({
         name: "filter",
         html: `<span class="material-icons" style="font-size:18px;vertical-align:middle;">filter_list</span>`,
@@ -182,6 +183,11 @@ function createTable(code, data) {
           newTable.shadowRoot.querySelector(".filter-row").classList.toggle("hide");
         },
       });
+      // p.addControl({
+      //   name: "columns",
+      //   html: `<span class="material-icons" style="font-size:18px;vertical-align:middle;">settings</span>`,
+      //   handler: () => newTable.openColumnEditor(),
+      // });
     },
     footerToolbar: () => {
       const bar = document.createElement("div");
@@ -207,6 +213,7 @@ function createTable(code, data) {
           downloadFile(code + ".csv", csvData);
         }),
       );
+      bar.appendChild(makeBtn("view_column", "Edit columns", () => newTable.openColumnEditor()));
       return bar;
     },
   });
@@ -252,6 +259,8 @@ function createTable(code, data) {
     const { count } = (e as CustomEvent).detail;
     panel.setHeaderTitle(`${baseTitle} (${count})`);
   });
+  // Auto-open the column editor the first time columns are established (CSV import on a new table).
+  newTable.addEventListener("columns-established", () => newTable.openColumnEditor(), { once: true });
   // Initial render fired before the listener was attached — sync the title now.
   panel.setHeaderTitle(`${baseTitle} (${newTable.dataArray.length})`);
 
@@ -417,7 +426,7 @@ function displayTables() {
         createTable(table, data);
       } catch (e) {
         console.error(e);
-        if (e instanceof Error) alert(`Error loading table (${table}) data: ${e.message}`);
+        if (e instanceof Error) showAlert(`Error loading table (${table}) data: ${e.message}`, "error");
       }
     } else {
       el.refresh();
