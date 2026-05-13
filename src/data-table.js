@@ -85,13 +85,13 @@ export class DataEntryTable extends HTMLElement {
     this.elementRect.width = w;
     this.elementRect.height = h;
     this.saveToStorage();
-    // Re-render visible slice (rAF-throttled) — viewport height changed
+    // Re-render visible slice (rAF-throttled) — viewport height changed.
+    // Use _renderBodyOnly so the filter row inputs keep focus if the user is typing.
     if (this._displayData && this._displayData.length > DataEntryTable.VIRTUALIZE_THRESHOLD && this.tableContainer) {
       if (this._resizeRaf) return;
       this._resizeRaf = requestAnimationFrame(() => {
         this._resizeRaf = null;
-        this.tableContainer.innerHTML = this._buildTableHTML();
-        this.addTableEventListeners();
+        this._renderBodyOnly();
       });
     }
   }
@@ -500,21 +500,27 @@ export class DataEntryTable extends HTMLElement {
     return true;
   }
 
-  renderTable(displayData) {
-    displayData = displayData || [...this.dataArray];
-
-    // For large datasets, precompute a row→index map so the per-row originalIndex
-    // lookup below is O(1) instead of O(n) with JSON.stringify (was O(n²) overall).
-    // Filter/sort preserve row identity, so reference equality is safe here.
-    let originalIndexMap = new Map();
-    for (let i = 0; i < this.dataArray.length; i++) originalIndexMap.set(this.dataArray[i], i);
-
-    // Sort full displayData (cheap relative to render; needed before slicing)
+  // Build the filtered + sorted view of dataArray. Called by both full renderTable
+  // and the partial _renderBodyOnly path so behavior stays consistent.
+  _computeDisplayData() {
+    let rows = this.dataArray;
+    // AND all non-empty per-column filters; match against displayed text so
+    // locale-formatted dates compare against what the user sees.
+    const active = (this.filters || [])
+      .map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() }))
+      .filter((x) => x.f);
+    if (active.length) {
+      rows = rows.filter((row) =>
+        active.every(({ i, f }) => this._formatCellText(row[i], this.columns[i].type).toLowerCase().includes(f)),
+      );
+    }
+    // Apply sort. Always copy so callers don't mutate dataArray.
+    rows = [...rows];
     if (this.sortColumn !== -1) {
       const sortColumn = this.sortColumn;
       const sortDirection = this.sortDirection;
       const colType = this.columns[sortColumn].type;
-      displayData.sort((a, b) => {
+      rows.sort((a, b) => {
         const valueA = a[sortColumn];
         const valueB = b[sortColumn];
         if (colType === "date") {
@@ -530,10 +536,16 @@ export class DataEntryTable extends HTMLElement {
         }
       });
     }
+    return rows;
+  }
 
-    // Cache for scroll/resize re-renders (avoid re-sorting)
-    this._displayData = displayData;
-    this._originalIndexMap = originalIndexMap;
+  renderTable() {
+    // For large datasets, precompute a row→index map so the per-row originalIndex
+    // lookup below is O(1) instead of O(n) with JSON.stringify (was O(n²) overall).
+    // Filter/sort preserve row identity, so reference equality is safe here.
+    this._originalIndexMap = new Map();
+    for (let i = 0; i < this.dataArray.length; i++) this._originalIndexMap.set(this.dataArray[i], i);
+    this._displayData = this._computeDisplayData();
 
     this.tableContainer.innerHTML = this._buildTableHTML();
     this.addTableEventListeners();
@@ -541,7 +553,7 @@ export class DataEntryTable extends HTMLElement {
 
     // Refine row-height estimate from a real rendered row, then re-render once
     // if the actual height differs meaningfully from the estimate.
-    if (displayData.length > 0) {
+    if (this._displayData.length > 0) {
       /** @type {HTMLElement} */
       const sample = this.tableContainer.querySelector("tbody tr.data-row");
       if (sample && sample.offsetHeight > 0) {
@@ -556,7 +568,34 @@ export class DataEntryTable extends HTMLElement {
 
     this.dispatchEvent(
       new CustomEvent("row-count-changed", {
-        detail: { count: displayData.length, total: this.dataArray.length },
+        detail: { count: this._displayData.length, total: this.dataArray.length },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  // Partial re-render: rebuild only tbody (data rows + virtual spacers) and re-attach
+  // body-level listeners. Used by the live filter so the filter-row inputs keep focus
+  // and caret position.
+  _renderBodyOnly() {
+    this._originalIndexMap = new Map();
+    for (let i = 0; i < this.dataArray.length; i++) this._originalIndexMap.set(this.dataArray[i], i);
+    this._displayData = this._computeDisplayData();
+
+    const tbody = this.tableContainer.querySelector("tbody");
+    if (!tbody) {
+      // Table not rendered yet — fall through to a full render.
+      this.renderTable();
+      return;
+    }
+    tbody.innerHTML = this._buildBodyHTML();
+    this._attachBodyListeners();
+    this._refreshFilterDatalists();
+
+    this.dispatchEvent(
+      new CustomEvent("row-count-changed", {
+        detail: { count: this._displayData.length, total: this.dataArray.length },
         bubbles: true,
         composed: true,
       }),
@@ -564,21 +603,11 @@ export class DataEntryTable extends HTMLElement {
   }
 
   _buildTableHTML() {
-    const total = this._displayData.length;
-    const useVirtual = total > DataEntryTable.VIRTUALIZE_THRESHOLD;
-    const colSpan = this.columns.length + 1;
+    return `<table>${this._buildHeadHTML()}<tbody>${this._buildBodyHTML()}</tbody></table>`;
+  }
 
-    let firstVisible = 0;
-    let lastVisible = total;
-    if (useVirtual) {
-      const scrollTop = this.tableContainer.scrollTop;
-      const viewportH = this.tableContainer.clientHeight || 400;
-      const buffer = 10;
-      firstVisible = Math.max(0, Math.floor(scrollTop / this._rowHeight) - buffer);
-      lastVisible = Math.min(total, Math.ceil((scrollTop + viewportH) / this._rowHeight) + buffer);
-    }
-
-    let html = '<table><thead><tr><th class="row-actions"></th>';
+  _buildHeadHTML() {
+    let html = '<thead><tr><th class="row-actions"></th>';
     this.columns.forEach((col, index) => {
       const dataType = col.type;
       const classNames = [dataType];
@@ -596,27 +625,102 @@ export class DataEntryTable extends HTMLElement {
       const keyIcon = flagSyms.length ? `<span class="key-indicator" title="${flagTitles.join(", ")}">${flagSyms.join("")}</span>` : "";
       html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}</th>`;
     });
-
+    html += "</tr>";
     html +=
       `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}"><td></td>` +
-      this.columns.map((col, index) => `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index]}"/></td>`).join(" ") +
-      "</tr>";
+      this.columns
+        .map(
+          (col, index) =>
+            `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index]}" placeholder="filter…" list="filter-list-${index}"/></td>`,
+        )
+        .join(" ") +
+      "</tr></thead>";
+    html += this._buildFilterDatalists();
+    return html;
+  }
 
+  // Build one <datalist> per column with the column's unique displayed values
+  // for autocomplete in the filter inputs. Each column's suggestions reflect rows
+  // that pass every OTHER column's filter — i.e. faceted-search semantics — so
+  // narrowing one column shrinks the other columns' dropdowns.
+  _buildFilterDatalists() {
+    let html = "";
+    this.columns.forEach((_, index) => {
+      html += `<datalist id="filter-list-${index}">${this._buildFilterOptions(index)}</datalist>`;
+    });
+    return html;
+  }
+
+  // Inner <option> HTML for one column's datalist. Filters by every active filter
+  // EXCEPT the one in `columnIndex` itself (so a column's own dropdown isn't
+  // pre-narrowed by what the user has already typed in that column). Capped to
+  // keep the payload bounded on very wide value sets.
+  _buildFilterOptions(columnIndex) {
+    const MAX = 500;
+    const col = this.columns[columnIndex];
+    const active = (this.filters || [])
+      .map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() }))
+      .filter((x) => x.f && x.i !== columnIndex);
+
+    const seen = new Set();
+    for (let r = 0; r < this.dataArray.length && seen.size < MAX; r++) {
+      const row = this.dataArray[r];
+      let pass = true;
+      for (const { i, f } of active) {
+        if (!this._formatCellText(row[i], this.columns[i].type).toLowerCase().includes(f)) {
+          pass = false;
+          break;
+        }
+      }
+      if (!pass) continue;
+      const v = row[columnIndex];
+      if (v === null || v === undefined || v === "") continue;
+      const text = this._formatCellText(v, col.type);
+      if (text === "") continue;
+      seen.add(text);
+    }
+    const opts = [...seen].sort((a, b) => String(a).localeCompare(String(b)));
+    return opts.map((v) => `<option value="${this._escapeHTML(v)}"></option>`).join("");
+  }
+
+  // Refresh existing <datalist> elements in place (replace their inner options).
+  // Replacing innerHTML on the datalist rather than swapping the <datalist> element
+  // itself avoids disturbing the input the user is currently typing in.
+  _refreshFilterDatalists() {
+    this.columns.forEach((_, index) => {
+      const dl = this.shadowRoot.getElementById(`filter-list-${index}`);
+      if (!dl) return;
+      dl.innerHTML = this._buildFilterOptions(index);
+    });
+  }
+
+  _buildBodyHTML() {
+    const total = this._displayData.length;
+    const useVirtual = total > DataEntryTable.VIRTUALIZE_THRESHOLD;
+    const colSpan = this.columns.length + 1;
+
+    let firstVisible = 0;
+    let lastVisible = total;
+    if (useVirtual) {
+      const scrollTop = this.tableContainer.scrollTop;
+      const viewportH = this.tableContainer.clientHeight || 400;
+      const buffer = 10;
+      firstVisible = Math.max(0, Math.floor(scrollTop / this._rowHeight) - buffer);
+      lastVisible = Math.min(total, Math.ceil((scrollTop + viewportH) / this._rowHeight) + buffer);
+    }
+
+    let html = "";
     if (firstVisible > 0) {
       html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${firstVisible * this._rowHeight}px"></td></tr>`;
     }
-
     for (let i = firstVisible; i < lastVisible; i++) {
       const row = this._displayData[i];
       const originalIndex = this._originalIndexMap ? (this._originalIndexMap.get(row) ?? -1) : this.dataArray.findIndex((r) => JSON.stringify(r) === JSON.stringify(row));
       html += this._buildRowHTML(row, originalIndex);
     }
-
     if (lastVisible < total) {
       html += `<tr class="virtual-spacer"><td colspan="${colSpan}" style="padding:0;border:0;height:${(total - lastVisible) * this._rowHeight}px"></td></tr>`;
     }
-
-    html += "</tbody></table>";
     return html;
   }
 
@@ -780,44 +884,60 @@ export class DataEntryTable extends HTMLElement {
             input.blur();
           }
         }
-        this.tableContainer.innerHTML = this._buildTableHTML();
-        this.addTableEventListeners();
+        // Body-only rebuild keeps the filter row's inputs and their focus/caret intact.
+        this._renderBodyOnly();
       });
     });
   }
 
-  // Add event listeners to table elements
+  // Wire all listeners after a full table rebuild. Body-only re-renders call
+  // _attachBodyListeners directly — head listeners stay attached because the
+  // thead DOM doesn't change.
   addTableEventListeners() {
-    // Filter fields
-    //this.shadowRoot.querySelector(".container").addEventListener("drop", this.handleDataInputDrop.bind(this));
+    this._attachHeadListeners();
+    this._attachBodyListeners();
+  }
+
+  _attachHeadListeners() {
+    // Filter fields — live filter on every keystroke. Calls _renderBodyOnly so
+    // the filter-row input itself keeps focus and caret position.
     const filterFields = /** @type {NodeListOf<HTMLInputElement>} */ (this.shadowRoot.querySelectorAll("td input.filter-input"));
     filterFields.forEach((field) => {
-      field.addEventListener(
-        "keypress",
-        /**
-         * @param {KeyboardEvent} e
-         */
-        (e) => {
-          // Since we render the whole table we can't filter until enter is pressed
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
-          const filterValue = field.value.trim();
-          this.filters[fieldIndex] = filterValue;
-
-          // Filter on the displayed text so users can match what they see
-          // (especially relevant for locale-formatted dates).
-          const colType = this.columns[fieldIndex].type;
-          const filteredData = this.dataArray.filter((row) => {
-            return this._formatCellText(row[fieldIndex], colType).toLowerCase().includes(filterValue.toLowerCase());
-          });
-
-          // Update the table with filtered data
-          this.renderTable(filteredData);
-        },
-      );
+      field.addEventListener("input", () => {
+        const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
+        this.filters[fieldIndex] = field.value.trim();
+        this._renderBodyOnly();
+      });
     });
 
+    // Header click for sorting (only data-column headers, not the row-actions gutter or the + add-column)
+    const headers = this.shadowRoot.querySelectorAll("th[data-index]");
+    headers.forEach((header) => {
+      header.addEventListener("click", (e) => {
+        // Suppress click on column name or dblclick event is not fired
+        let el = /** @type {HTMLElement} */ (e.target);
+        if (el.classList.contains("column-name")) return;
+
+        const columnIndex = parseInt(header.getAttribute("data-index"));
+
+        // Toggle sort direction if clicking the same column
+        if (this.sortColumn === columnIndex) {
+          if (this.sortDirection == "desc") {
+            this.sortColumn = -1;
+          } else {
+            this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
+          }
+        } else {
+          this.sortColumn = columnIndex;
+          this.sortDirection = "asc";
+        }
+        this.saveToStorage();
+        this.renderTable();
+      });
+    });
+  }
+
+  _attachBodyListeners() {
     // Editable text/number/date cells — click swaps in an <input>
     const editableCells = /** @type {NodeListOf<HTMLElement>} */ (this.shadowRoot.querySelectorAll("td.editable"));
     editableCells.forEach((td) => {
@@ -872,32 +992,6 @@ export class DataEntryTable extends HTMLElement {
         );
       },
     );
-
-    // Header click for sorting (only data-column headers, not the row-actions gutter or the + add-column)
-    const headers = this.shadowRoot.querySelectorAll("th[data-index]");
-    headers.forEach((header) => {
-      header.addEventListener("click", (e) => {
-        // Suppress click on column name or dblclick event is not fired
-        let el = /** @type {HTMLElement} */ (e.target);
-        if (el.classList.contains("column-name")) return;
-
-        const columnIndex = parseInt(header.getAttribute("data-index"));
-
-        // Toggle sort direction if clicking the same column
-        if (this.sortColumn === columnIndex) {
-          if (this.sortDirection == "desc") {
-            this.sortColumn = -1;
-          } else {
-            this.sortDirection = this.sortDirection === "asc" ? "desc" : "asc";
-          }
-        } else {
-          this.sortColumn = columnIndex;
-          this.sortDirection = "asc";
-        }
-        this.saveToStorage();
-        this.renderTable();
-      });
-    });
 
     // Row-action ellipsis: opens an inline jsPanel context menu.
     this.shadowRoot.querySelectorAll(".row-menu").forEach((btn) => {

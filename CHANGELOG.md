@@ -6,6 +6,7 @@ Grouped by day, derived from full git history. Most recent first
 - Tailwind header (v0.0.15)
 - Column Editor (v0.0.16)
 - Import entire DB (v0.0.17)
+- Filter as you type (v0.0.18)
 
 ## 2026-05-12
 
