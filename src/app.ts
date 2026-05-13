@@ -2,10 +2,10 @@ import "jspanel4/dist/jspanel.min.css";
 import "jspanel4/es6module/extensions/hint/jspanel.hint.js";
 import { jsPanel } from "jspanel4/es6module/jspanel.js";
 import "material-icons/iconfont/filled.css";
-import "./styles.css";
-import { showAlert } from "./show-alert";
-import { tryJsonDrop } from "./json-import";
 import { tryCsvDrop } from "./csv-import";
+import { tryJsonDrop } from "./json-import";
+import { showAlert } from "./show-alert";
+import "./styles.css";
 
 addEventListener("error", function (e) {
   showAlert(e.message, "error");
@@ -16,6 +16,7 @@ import { DataEntryTable } from "./data-table.js";
 customElements.define("data-entry-table", DataEntryTable);
 
 import { DataStore } from "./data-store";
+import { workspace, initWorkspaceSelect } from "./workspace";
 
 declare global {
   interface Window {
@@ -23,8 +24,6 @@ declare global {
   }
 }
 
-var qs = new URLSearchParams(location.search);
-const workspace = (qs.has("space") && qs.get("space")) || localStorage.getItem("/minnidbmax/.currentStore") || "default";
 const store = DataStore(`/minnidbmax/${workspace}/`);
 window.store = store; // Expose store globally for debugging
 
@@ -85,55 +84,7 @@ async function dataPull() {
 function dataDump() {
   const dump = {};
   store.dir({ suffix: ".table.json" }).forEach(([key, data]) => (dump[key] = data));
-  downloadFile("minnidbmax.json", JSON.stringify(dump, null, 2));
-}
-
-function listWorkspaces(): string[] {
-  const set = new Set<string>();
-  const re = /^\/minnidbmax\/([^/]+)\/.+/;
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    const m = key && key.match(re);
-    if (m) set.add(m[1]);
-  }
-  set.add(workspace);
-  return [...set].sort();
-}
-
-function populateWorkspaceSelect() {
-  const select = document.getElementById("workspaceSelect") as HTMLSelectElement;
-  select.innerHTML = "";
-  for (const ws of listWorkspaces()) {
-    const opt = document.createElement("option");
-    opt.value = ws;
-    opt.textContent = ws;
-    if (ws === workspace) opt.selected = true;
-    select.appendChild(opt);
-  }
-  const newOpt = document.createElement("option");
-  newOpt.value = "__new__";
-  newOpt.textContent = "<new workspace>";
-  select.appendChild(newOpt);
-}
-
-function switchWorkspace(name: string) {
-  if (name === workspace) return;
-  localStorage.setItem("/minnidbmax/.currentStore", name);
-  const url = new URL(location.href);
-  url.searchParams.delete("space");
-  location.replace(url.toString());
-}
-
-function onWorkspaceChange(e: Event) {
-  const select = e.target as HTMLSelectElement;
-  if (select.value === "__new__") {
-    const name = prompt("Enter new workspace name:");
-    select.value = workspace;
-    if (!name || !name.trim()) return;
-    switchWorkspace(name.trim());
-    return;
-  }
-  switchWorkspace(select.value);
+  downloadFile(workspace + ".db.json", JSON.stringify(dump, null, 2));
 }
 
 function addTable() {
@@ -373,13 +324,12 @@ function updateEmptyState() {
 // Example of how to interact with the component programmatically
 document.addEventListener("DOMContentLoaded", function () {
   //gistSynch();
-  populateWorkspaceSelect();
+  initWorkspaceSelect(document.getElementById("workspaceSelect") as HTMLSelectElement);
   displayTables();
   document.getElementById("dataPush").addEventListener("click", dataPush);
   document.getElementById("dataPull").addEventListener("click", dataPull);
   document.getElementById("dataDump").addEventListener("click", dataDump);
   document.getElementById("addTable").addEventListener("click", addTable);
-  document.getElementById("workspaceSelect").addEventListener("change", onWorkspaceChange);
   document.addEventListener("dragenter", onPageDragenter);
   document.addEventListener("dragleave", onPageDragleave);
   document.addEventListener("dragover", onPageDragover);
