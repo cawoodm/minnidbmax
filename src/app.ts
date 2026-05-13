@@ -15,11 +15,11 @@ addEventListener("error", function (e) {
 import { DataEntryTable } from "./data-table.js";
 customElements.define("data-entry-table", DataEntryTable);
 
-import { DataStore } from "./data-store.js";
+import { DataStore } from "./data-store";
 
 declare global {
   interface Window {
-    store: ReturnType<typeof DataStore>;
+    store: DataStore;
   }
 }
 

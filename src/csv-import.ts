@@ -1,10 +1,7 @@
-type DataStoreLike = {
-  get(key: string, defaultValue?: any): any;
-  delete(key: string): void;
-};
+import type { DataStore } from "./data-store";
 
 export type CsvImportDeps = {
-  store: DataStoreLike;
+  store: DataStore;
   createTable: (code: string, data: any) => void;
 };
 

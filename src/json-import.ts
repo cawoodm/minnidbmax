@@ -1,13 +1,7 @@
 import { showAlert } from "./show-alert";
+import type { DataStore } from "./data-store";
 
-type DataStoreLike = {
-  dir(opts?: { path?: string; suffix?: string }): [string, any][];
-  get(key: string, defaultValue?: any): any;
-  set(key: string, value: any): void;
-  delete(key: string): void;
-};
-
-export type JsonImportDeps = { store: DataStoreLike; displayTables: () => void };
+export type JsonImportDeps = { store: DataStore; displayTables: () => void };
 
 // Probe a drop event for a .json file. Returns true if the plugin handled the drop
 // (in which case the caller should stop processing). Returns false if no .json file
