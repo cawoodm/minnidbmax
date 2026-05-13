@@ -4,6 +4,7 @@ import { jsPanel } from "jspanel4/es6module/jspanel.js";
 import "material-icons/iconfont/filled.css";
 import "./styles.css";
 import { showAlert } from "./show-alert";
+import { tryJsonDrop } from "./json-import";
 
 addEventListener("error", function (e) {
   showAlert(e.message, "error");
@@ -375,6 +376,7 @@ function askImportMode(tableName: string): Promise<"append" | "overwrite" | null
 async function onPageDrop(e: DragEvent) {
   e.preventDefault();
   hideDropOverlays();
+  if (await tryJsonDrop(e, { store, displayTables })) return;
   const file = Array.from(e.dataTransfer?.files ?? []).find((f) => /\.csv$/i.test(f.name));
   if (!file) return;
   // If the drop landed inside an existing panel, route the import into that panel's table.

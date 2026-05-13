@@ -64,5 +64,9 @@ In order to Push/Pull data you need to [create](http://gist.github.com/) a (pref
 * `localStorage.setItem('minnidb-gist-id', 'c4c***')`
 You will now be able to synch your data with this Gist for free on Github.
 
+## Import/Export
+* Each table can import/export data via .csv and supports drag and drop
+* Then entire database can be exported to a .db.json file which can also be imported via drag & drop
+
 ### Limitations
 * Gist files are limited to 1MB [See API Reference](https://docs.github.com/en/rest/gists/gists?utm_source=chatgpt.com&apiVersion=2026-03-10#truncation) so tables above 1Mb won't be synched properly
