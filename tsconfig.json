@@ -29,7 +29,7 @@
     /* Modules */
     "module": "ESNext", /* Specify what module code is generated. */
     "rootDir": "./src", /* Specify the root folder within your source files. */
-    // "moduleResolution": "node10",                     /* Specify how TypeScript looks up a file from a given module specifier. */
+    "moduleResolution": "bundler",                     /* Vite-bundled project: use modern resolver that honors package.json exports maps (jspanel4 needs this). */
     // "baseUrl": "./",                                  /* Specify the base directory to resolve non-relative module names. */
     // "paths": {},                                      /* Specify a set of entries that re-map imports to additional lookup locations. */
     // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */

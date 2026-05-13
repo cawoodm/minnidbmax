@@ -8,32 +8,35 @@ import { showAlert as _showAlert } from "./show-alert.js";
 const DEFAULT_DATE_FORMAT = "YYYY-MM-DD";
 
 export class DataEntryTable extends HTMLElement {
+  // Instance state (declared so TS sees these fields)
+  dataArray: any[] = [];
+  columns: any[] = [];
+  filters: string[] = [];
+  elementRect: any = {};
+  sortColumn: number = -1;
+  sortDirection: "asc" | "desc" = "asc";
+  storageKey: string;
+  dataInput: HTMLTextAreaElement;
+  tableContainer: HTMLElement;
+  // Virtualization state
+  _rowHeight: number = 40; // estimate; refined post-render
+  _scrollAttached: boolean = false;
+  _scrollRaf: number | null = null;
+  _resizeRaf: number | null = null;
+  _displayData: any[] | null = null;
+  _originalIndexMap: Map<any, number> | null = null;
+
+  static VIRTUALIZE_THRESHOLD = 1000;
+
   constructor() {
     super();
 
     // Initialize Shadow DOM
     this.attachShadow({ mode: "open" });
 
-    const template = /** @type {!HTMLTemplateElement} */ (document.getElementById("data-entry-template"));
+    const template = document.getElementById("data-entry-template") as HTMLTemplateElement;
     this.shadowRoot.appendChild(template.content.cloneNode(true));
-
-    // Instance variables
-    this.dataArray = [];
-    this.columns = [];
-    this.filters = [];
-    this.elementRect = {};
-    this.sortColumn = -1;
-    this.sortDirection = "asc";
-    // Virtualization state
-    this._rowHeight = 40; // estimate; refined post-render
-    this._scrollAttached = false;
-    this._scrollRaf = null;
-    this._resizeRaf = null;
-    this._displayData = null;
-    this._originalIndexMap = null;
   }
-
-  static VIRTUALIZE_THRESHOLD = 1000;
 
   // When component is added to the DOM
   connectedCallback() {
@@ -42,9 +45,9 @@ export class DataEntryTable extends HTMLElement {
     if (!this.storageKey) throw new Error("Data Table requires a storage-key attribute.");
 
     // DOM elements
-    this.dataInput = /** @type {!HTMLInputElement} */ (this.shadowRoot.querySelector(".input-container textarea"));
+    this.dataInput = this.shadowRoot.querySelector(".input-container textarea") as HTMLTextAreaElement;
     if (!this.dataInput) throw new Error("Data input element not found in template.");
-    this.tableContainer = this.shadowRoot.querySelector(".table-container");
+    this.tableContainer = this.shadowRoot.querySelector(".table-container") as HTMLElement;
 
     //this.titleElement = this.shadowRoot.querySelector(".title");
     //if (!this.titleElement) throw new Error("Title element not found in template.");
@@ -351,7 +354,7 @@ export class DataEntryTable extends HTMLElement {
   }
 
   // Establish column structure from first data row
-  establishColumns(values, headers) {
+  establishColumns(values, headers?) {
     if (headers && headers.length !== values.length) throw new ValidationError("Header and 1st data row length mismatch!");
     this.columns = values.map((value, index) => {
       let col = {
@@ -554,8 +557,7 @@ export class DataEntryTable extends HTMLElement {
     // Refine row-height estimate from a real rendered row, then re-render once
     // if the actual height differs meaningfully from the estimate.
     if (this._displayData.length > 0) {
-      /** @type {HTMLElement} */
-      const sample = this.tableContainer.querySelector("tbody tr.data-row");
+      const sample = this.tableContainer.querySelector("tbody tr.data-row") as HTMLElement;
       if (sample && sample.offsetHeight > 0) {
         const measured = sample.offsetHeight;
         if (Math.abs(measured - this._rowHeight) > 2) {
@@ -901,7 +903,7 @@ export class DataEntryTable extends HTMLElement {
   _attachHeadListeners() {
     // Filter fields — live filter on every keystroke. Calls _renderBodyOnly so
     // the filter-row input itself keeps focus and caret position.
-    const filterFields = /** @type {NodeListOf<HTMLInputElement>} */ (this.shadowRoot.querySelectorAll("td input.filter-input"));
+    const filterFields = this.shadowRoot.querySelectorAll("td input.filter-input") as NodeListOf<HTMLInputElement>;
     filterFields.forEach((field) => {
       field.addEventListener("input", () => {
         const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
@@ -915,7 +917,7 @@ export class DataEntryTable extends HTMLElement {
     headers.forEach((header) => {
       header.addEventListener("click", (e) => {
         // Suppress click on column name or dblclick event is not fired
-        let el = /** @type {HTMLElement} */ (e.target);
+        let el = e.target as HTMLElement;
         if (el.classList.contains("column-name")) return;
 
         const columnIndex = parseInt(header.getAttribute("data-index"));
@@ -948,19 +950,10 @@ export class DataEntryTable extends HTMLElement {
     });
 
     // Checkbox fields (and any always-rendered .dataInput, e.g. during active edit)
-    const inputFields = /** @type {NodeListOf<HTMLInputElement>} */ (this.shadowRoot.querySelectorAll("td input.dataInput"));
-    inputFields.forEach(
-      /**
-       * @param {HTMLInputElement} field
-       */
-      (field) => {
-        field.addEventListener(
-          "change",
-          /**
-           * @param {Event} e
-           */
-          (e) => {
-            const el = /** @type {HTMLInputElement} */ (e.target);
+    const inputFields = this.shadowRoot.querySelectorAll("td input.dataInput") as NodeListOf<HTMLInputElement>;
+    inputFields.forEach((field) => {
+      field.addEventListener("change", (e) => {
+            const el = e.target as HTMLInputElement;
             const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
             const dataIndex = parseInt(field.getAttribute("dataIndex"));
             const column = this.columns[fieldIndex];
@@ -986,12 +979,10 @@ export class DataEntryTable extends HTMLElement {
               if (!this.dataArray[dataIndex]) return alert(`Missing row: ${dataIndex}`);
               this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column);
             }
-            this.saveToStorage();
-            // this.renderTable();
-          },
-        );
-      },
-    );
+        this.saveToStorage();
+        // this.renderTable();
+      });
+    });
 
     // Row-action ellipsis: opens an inline jsPanel context menu.
     this.shadowRoot.querySelectorAll(".row-menu").forEach((btn) => {
@@ -1004,7 +995,7 @@ export class DataEntryTable extends HTMLElement {
   }
 
   _openRowContextMenu(event, rowIndex) {
-    document.querySelectorAll(".jsPanel-rowmenu").forEach((p) => p.close());
+    document.querySelectorAll(".jsPanel-rowmenu").forEach((p) => (p as any).close());
     const items = [{ label: "Delete row", run: () => this.deleteRow(rowIndex) }];
     jsPanel.create({
       paneltype: "rowmenu",
@@ -1093,7 +1084,7 @@ export class DataEntryTable extends HTMLElement {
 
     // Delete row (event delegation)
     tbody.addEventListener("click", (e) => {
-      const btn = e.target.closest(".del");
+      const btn = (e.target as HTMLElement).closest(".del");
       if (btn) btn.closest("tr").remove();
     });
 
@@ -1131,7 +1122,7 @@ export class DataEntryTable extends HTMLElement {
       <td class="py-2 pr-2 text-center"><input type="checkbox" class="is-notnull accent-blue-600" ${col.isNotNull ? "checked" : ""}></td>
       <td class="py-2 text-right"><button type="button" class="del text-slate-400 hover:text-red-500 text-xl leading-none" title="Delete column">×</button></td>
     `;
-    tr.querySelector(".type").value = col.type || "string";
+    (tr.querySelector(".type") as HTMLSelectElement).value = col.type || "string";
     return tr;
   }
 
@@ -1141,7 +1132,7 @@ export class DataEntryTable extends HTMLElement {
     const flagRow = (tr) => tr.classList.add("bg-red-50", "ring-1", "ring-red-300");
     tbody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("bg-red-50", "ring-1", "ring-red-300"));
 
-    const rows = Array.from(tbody.querySelectorAll("tr"));
+    const rows = Array.from(tbody.querySelectorAll("tr")) as HTMLElement[];
     if (rows.length === 0) {
       this.showAlert("Table must have at least one column", "error");
       return;
@@ -1150,13 +1141,13 @@ export class DataEntryTable extends HTMLElement {
     const working = rows.map((tr) => ({
       tr,
       _originalIndex: tr.dataset.originalIndex != null ? parseInt(tr.dataset.originalIndex, 10) : null,
-      field: tr.querySelector(".field").value.trim(),
-      name: tr.querySelector(".name").value.trim(),
-      type: tr.querySelector(".type").value,
-      default: tr.querySelector(".default").value,
-      max: parseInt(tr.querySelector(".max").value) || 0,
-      isUnique: tr.querySelector(".is-unique").checked,
-      isNotNull: tr.querySelector(".is-notnull").checked,
+      field: (tr.querySelector(".field") as HTMLInputElement).value.trim(),
+      name: (tr.querySelector(".name") as HTMLInputElement).value.trim(),
+      type: (tr.querySelector(".type") as HTMLSelectElement).value,
+      default: (tr.querySelector(".default") as HTMLInputElement).value,
+      max: parseInt((tr.querySelector(".max") as HTMLInputElement).value) || 0,
+      isUnique: (tr.querySelector(".is-unique") as HTMLInputElement).checked,
+      isNotNull: (tr.querySelector(".is-notnull") as HTMLInputElement).checked,
     }));
 
     // 1. Validate field names
@@ -1360,7 +1351,7 @@ export class DataEntryTable extends HTMLElement {
 
   // Per-table wrapper around the shared toast primitive (src/show-alert.ts).
   // Adds the table name as the toast header so users can see which table fired the notification.
-  showAlert(message, type = "success") {
+  showAlert(message: string, type: "success" | "error" | "info" = "success") {
     const tableName = (this.storageKey || "").replace(/\.table\.json$/, "");
     _showAlert(message, type, tableName || "Notice");
   }

@@ -12,7 +12,7 @@ addEventListener("error", function (e) {
   // console.error(e.error.stack);
 });
 
-import { DataEntryTable } from "./data-table.js";
+import { DataEntryTable } from "./data-table";
 customElements.define("data-entry-table", DataEntryTable);
 
 import { DataStore } from "./data-store";
