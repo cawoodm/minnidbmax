@@ -69,4 +69,5 @@ You will now be able to synch your data with this Gist for free on Github.
 * Then entire database can be exported to a .db.json file which can also be imported via drag & drop
 
 ### Limitations
+* Local Storage in the browser is limited to 5MB
 * Gist files are limited to 1MB [See API Reference](https://docs.github.com/en/rest/gists/gists?utm_source=chatgpt.com&apiVersion=2026-03-10#truncation) so tables above 1Mb won't be synched properly
