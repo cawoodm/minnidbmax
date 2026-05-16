@@ -1,19 +1,18 @@
-import { showAlert } from "./show-alert";
 import type { DataStore } from "./data-store";
+import { showAlert } from "./show-alert";
 
 export type JsonImportDeps = { store: DataStore; displayTables: () => void };
 
 // Probe a drop event for a .json file. Returns true if the plugin handled the drop
 // (in which case the caller should stop processing). Returns false if no .json file
 // was present and the caller should continue with its own handling.
-export async function tryJsonDrop(e: DragEvent, deps: JsonImportDeps): Promise<boolean> {
-  const file = Array.from(e.dataTransfer?.files ?? []).find((f) => /\.json$/i.test(f.name));
-  if (!file) return false;
-  await handleJsonFile(file, deps);
+export async function tryJsonDrop(file, table: string, deps: JsonImportDeps): Promise<boolean> {
+  if (!file || !/\.json/i.test(file.name)) return false;
+  await handleJsonFile(file, table, deps);
   return true;
 }
 
-async function handleJsonFile(file: File, deps: JsonImportDeps) {
+async function handleJsonFile(file: File, table: string, deps: JsonImportDeps) {
   const text = await file.text();
   let parsed: Record<string, any>;
   try {
@@ -22,9 +21,7 @@ async function handleJsonFile(file: File, deps: JsonImportDeps) {
     showAlert(`"${file.name}" is not valid JSON.`, "error", "Import");
     return;
   }
-  const validKeys = Object.keys(parsed).filter(
-    (k) => /\.table\.json$/.test(k) && parsed[k]?.dataArray && parsed[k]?.columns,
-  );
+  const validKeys = Object.keys(parsed).filter((k) => /\.table\.json$/.test(k) && parsed[k]?.dataArray && parsed[k]?.columns);
   if (validKeys.length === 0) {
     showAlert(`No valid tables found in "${file.name}".`, "error", "Import");
     return;
@@ -77,20 +74,12 @@ function askDbImportMode(filename: string, tableCount: number): Promise<"overwri
   });
 }
 
-function applyDbImport(
-  parsed: Record<string, any>,
-  keys: string[],
-  mode: "overwrite" | "replace",
-  deps: JsonImportDeps,
-) {
+function applyDbImport(parsed: Record<string, any>, keys: string[], mode: "overwrite" | "replace", deps: JsonImportDeps) {
   const { store, displayTables } = deps;
 
   // Close panels whose tables are about to be replaced — for "replace" that's every panel,
   // for "overwrite" only those matching incoming keys.
-  const keysToClose =
-    mode === "replace"
-      ? store.dir({ suffix: ".table.json" }).map(([k]) => k)
-      : keys.filter((k) => store.get(k));
+  const keysToClose = mode === "replace" ? store.dir({ suffix: ".table.json" }).map(([k]) => k) : keys.filter((k) => store.get(k));
   for (const k of keysToClose) {
     const code = k.replace(/\.table\.json$/, "");
     const el = document.getElementById("table-" + code);
@@ -107,7 +96,27 @@ function applyDbImport(
     for (const [k] of store.dir({ suffix: ".table.json" })) store.delete(k);
   }
 
-  for (const k of keys) store.set(k, parsed[k]);
+  // Cascade tables that have no persisted position so they don't all stack on
+  // top of each other at center. Tables that came in with an x/y are left alone.
+  let cascadeIndex = 0;
+  const baseX = 50;
+  const baseY = 50;
+  const step = 30;
+  for (const k of keys) {
+    const data = parsed[k];
+    const rect = data?.elementRect;
+    if (!rect || rect.x == null || rect.y == null) {
+      data.elementRect = {
+        ...(rect || {}),
+        x: baseX + cascadeIndex * step,
+        y: baseY + cascadeIndex * step,
+        width: rect?.width ?? 600,
+        height: rect?.height ?? 400,
+      };
+      cascadeIndex++;
+    }
+    store.set(k, data);
+  }
 
   showAlert(`Imported ${keys.length} table${keys.length > 1 ? "s" : ""} from JSON.`, "success", "Import");
   displayTables();

@@ -8,23 +8,18 @@ export type CsvImportDeps = {
 // Probe a drop event for a .csv file. Returns true if the plugin handled the drop
 // (in which case the caller should stop processing). Returns false if no .csv file
 // was present and the caller should continue with its own handling.
-export async function tryCsvDrop(e: DragEvent, deps: CsvImportDeps): Promise<boolean> {
-  const file = Array.from(e.dataTransfer?.files ?? []).find((f) => /\.csv$/i.test(f.name));
-  if (!file) return false;
-  await handleCsvFile(e, file, deps);
+export async function tryCsvDrop(file: File, table: string, deps: CsvImportDeps): Promise<boolean> {
+  if (!file || !/\.csv$/i.test(file.name)) return false;
+  await handleCsvFile(file, table, deps);
   return true;
 }
 
-async function handleCsvFile(e: DragEvent, file: File, deps: CsvImportDeps) {
+async function handleCsvFile(file: File, table: string, deps: CsvImportDeps) {
   // If the drop landed inside an existing panel, route the import into that panel's table.
-  const composed = e.composedPath();
-  const panelEl = composed.find((n) => (n as Element).classList?.contains("jsPanel")) as Element | undefined;
-  if (panelEl) {
-    const tableEl = panelEl.querySelector("data-entry-table") as any;
-    if (!tableEl) return;
-    const name = (tableEl.getAttribute("id") || "").replace(/^table-/, "") || "this table";
-    const mode = await askImportMode(name);
+  if (table) {
+    const mode = await askImportMode(table);
     if (mode === null) return;
+    const tableEl = document.getElementById("table-" + table) as any;
     if (mode === "overwrite") tableEl.initializeData();
     importCsvIntoTable(tableEl, file);
     return;

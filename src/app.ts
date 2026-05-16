@@ -280,8 +280,16 @@ async function onPageDrop(e: DragEvent) {
   if (!e.dataTransfer?.types.includes("Files")) return;
   e.preventDefault();
   hideDropOverlays();
-  if (await tryJsonDrop(e, { store, displayTables })) return;
-  if (await tryCsvDrop(e, { store, createTable })) return;
+
+  const composed = e.composedPath();
+  const panelEl = composed.find((n) => (n as Element).classList?.contains("jsPanel")) as Element | undefined;
+  const tableEl = panelEl?.querySelector("data-entry-table") as any;
+  const table = (tableEl?.getAttribute("id") || "").replace(/^table-/, "");
+
+  Array.from(e.dataTransfer.files).forEach(async (file) => {
+    if (await tryJsonDrop(file, table, { store, displayTables })) return;
+    if (await tryCsvDrop(file, table, { store, createTable })) return;
+  });
 }
 
 function displayTables() {
