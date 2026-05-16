@@ -77,11 +77,6 @@ export class DataEntryTable extends HTMLElement {
 
   initializeData() {
     this.dataArray = [];
-    this.columns = []; // TODO: We may not always want to overwrite custom column definitions when we import with overwrite!
-    this.filters = [];
-    this.displayOrder = [];
-    this.sortColumn = -1;
-    this.sortDirection = "asc";
     this.saveToStorage();
     this.renderTable();
   }
@@ -150,27 +145,33 @@ export class DataEntryTable extends HTMLElement {
       .filter((line) => line.length > 0);
     if (inputLines.length === 0) return; // No input to process
     const seperator = inputLines[0].includes(";") ? ";" : inputLines[0].includes("\t") ? "\t" : ",";
+    this.importDataLines(inputLines, seperator, "manual");
+  }
 
-    // Pre-parse all lines once — needed for both header detection and per-column date-format inference.
-    const parsedRows = inputLines.map((line) => this.parseCSV(line.trim(), seperator)).filter((r) => r.length > 0);
+  importDataLines(lines: string[], separator: string, mode: string) {
+    // Pre-parse all lines - extract (possibly quoted) data
+    const parsedRows = lines.map((line) => this.parseCSV(line.trim(), separator)).filter((r) => r.length > 0);
     if (parsedRows.length === 0) return;
 
+    const isBlankTable = this.dataArray.length === 0 && typeof this.columns[0] === "undefined";
+
     // Decide where data rows start (skip the header row if present).
-    const isNewTable = this.dataArray.length === 0 && typeof this.columns[0] === "undefined";
-    let dataStart = 0;
     const firstRow = parsedRows[0];
-    if (isNewTable) {
-      if (firstRow.every((cell) => this.detectType(cell) === "string")) {
+    const isPossibleHeaderRow = this._looksLikeHeaderRow(firstRow);
+    let dataStart = 0;
+    if (isBlankTable) {
+      if (isPossibleHeaderRow) {
         const sample = parsedRows.length > 1 ? parsedRows[1] : firstRow;
         this.establishColumns(sample, firstRow);
         dataStart = 1;
       } else {
         this.establishColumns(firstRow);
-        dataStart = 0;
       }
-    } else if (this._looksLikeHeaderRow(firstRow)) {
-      // Appending into an existing table — drop the header line if the CSV has one.
-      dataStart = 1;
+    } else if (mode == "append" || mode == "overwrite") {
+      if (isPossibleHeaderRow) {
+        // Appending into an existing table — drop the header line if the CSV has one.
+        dataStart = 1;
+      }
     }
     const dataRows = parsedRows.slice(dataStart);
 
@@ -189,7 +190,7 @@ export class DataEntryTable extends HTMLElement {
         this.processLine(values);
       } catch (e) {
         if (!(e instanceof ValidationError)) throw e;
-        if (errorLines == 0 && inputLines.length > 5) {
+        if (errorLines == 0 && lines.length > 5) {
           alert(`Line ${lineCount} failed: ${e.message}`);
           if (confirm("Do you want to stop processing? Pressing no/cancel now will skip all invalid rows silently!")) return;
           errorLines++;
@@ -223,8 +224,9 @@ export class DataEntryTable extends HTMLElement {
   // against accidentally dropping a legitimate first data row in an all-string
   // table.
   _looksLikeHeaderRow(row) {
-    if (!row || !row.length || row.length !== this.columns.length) return false;
+    if (!row || !row.length) return false;
     if (!row.every((cell) => this.detectType(String(cell)) === "string")) return false;
+    if (this.columns.length == 0) return true;
     let matches = 0;
     for (let i = 0; i < row.length; i++) {
       const cell = String(row[i]).toLowerCase();
@@ -607,13 +609,10 @@ export class DataEntryTable extends HTMLElement {
       if (this.sortColumn === index) classNames.push(this.sortDirection);
       const flagSyms = [];
       const flagTitles = [];
-      if (col.isUnique) {
+      if (col.isUnique && col.isNotNull) {
+        // Unique, non-null column we call the primary key
         flagSyms.push("🔑");
-        flagTitles.push("Unique");
-      }
-      if (col.isNotNull) {
-        flagSyms.push("!");
-        flagTitles.push("Not null");
+        flagTitles.push("Primary Key");
       }
       const keyIcon = flagSyms.length ? `<span class="key-indicator" title="${flagTitles.join(", ")}">${flagSyms.join("")}</span>` : "";
       html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}<span class="col-resizer" data-resize-index="${index}"></span></th>`;

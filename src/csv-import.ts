@@ -22,7 +22,7 @@ async function handleCsvFile(file: File, table: string, deps: CsvImportDeps) {
     if (mode === null) return;
     const tableEl = document.getElementById("table-" + table) as any;
     if (mode === "overwrite") tableEl.initializeData();
-    importCsvIntoTable(tableEl, file);
+    importCsvIntoTable(tableEl, file, mode);
     return;
   }
   // Else: drop on empty page area → create (or overwrite) a table named after the file.
@@ -44,15 +44,21 @@ async function handleCsvFile(file: File, table: string, deps: CsvImportDeps) {
   const newEl = document.getElementById("table-" + code) as any;
   if (newEl) {
     newEl.shadowRoot.querySelector(".input-container").classList.add("hide");
-    importCsvIntoTable(newEl, file);
+    importCsvIntoTable(newEl, file, "new");
   }
 }
 
-function importCsvIntoTable(el: any, file: File) {
+function importCsvIntoTable(el: any, file: File, mode: string) {
   const reader = new FileReader();
   reader.onload = (ev) => {
-    el.dataInput.value = ev.target!.result!.toString();
-    el.processInput();
+    const inputLines = ev
+      .target!.result!.toString()
+      .trim()
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const seperator = inputLines[0].includes(";") ? ";" : inputLines[0].includes("\t") ? "\t" : ",";
+    el.importDataLines(inputLines, seperator, mode);
   };
   reader.readAsText(file, "UTF-8");
 }
