@@ -120,6 +120,14 @@ export class DataEntryTable extends HTMLElement {
     this.elementRect.maximized = false;
     this.saveToStorage();
   }
+  smallifiedCallback(x, y) {
+    this.elementRect.smallified = true;
+    this.saveToStorage();
+  }
+  unsmallifiedCallback(x, y) {
+    this.elementRect.smallified = false;
+    this.saveToStorage();
+  }
   zIndexChangedCallback(z) {
     if (!Number.isFinite(z)) return;
     if (this.elementRect.zIndex === z) return; // skip no-op writes

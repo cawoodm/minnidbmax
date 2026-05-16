@@ -127,6 +127,8 @@ function createTable(code, data) {
     onminimized: newTable.minimizedCallback.bind(newTable),
     onmaximized: newTable.maximizedCallback.bind(newTable),
     onnormalized: newTable.restoredCallback.bind(newTable),
+    onsmallified: newTable.smallifiedCallback.bind(newTable),
+    onunsmallified: newTable.unsmallifiedCallback.bind(newTable),
     footerToolbar: () => {
       const bar = document.createElement("div");
       bar.style.cssText = "display:flex;gap:6px;padding:4px 8px;align-items:center;";
@@ -192,6 +194,7 @@ function createTable(code, data) {
 
   if (rect?.minimized) panel.minimize();
   else if (rect?.maximized) panel.maximize();
+  else if (rect?.smallified) panel.smallify();
 
   newTable.addEventListener("row-count-changed", (e: Event) => {
     const { count } = (e as CustomEvent).detail;
