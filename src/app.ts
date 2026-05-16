@@ -210,7 +210,7 @@ function createTable(code, data) {
 function deleteTable(table): boolean {
   if (!confirm("Are you sure you want to delete this table?")) return false;
   let key = table.getAttribute("storage-key");
-  store.delete(key);
+  table.delete();
   return true;
 }
 

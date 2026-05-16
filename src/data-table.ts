@@ -1608,6 +1608,10 @@ export class DataEntryTable extends HTMLElement {
     }
   }
 
+  delete() {
+    window.store.delete(this.storageKey);
+  }
+
   // Load data
   loadFromStorage() {
     try {
