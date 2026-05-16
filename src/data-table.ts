@@ -2,6 +2,7 @@
 
 import { jsPanel } from "jspanel4/es6module/jspanel.js";
 import { DEFAULT_DATE_FORMAT, detectDateType, inferColumnDateFormat, parseFlexibleDate, parseFlexibleDateTime } from "./date-parse";
+import { makeDialogDraggable } from "./draggable-dialog";
 import { showAlert as _showAlert } from "./show-alert.js";
 
 export class DataEntryTable extends HTMLElement {
@@ -157,8 +158,8 @@ export class DataEntryTable extends HTMLElement {
     // Decide where data rows start (skip the header row if present).
     const isNewTable = this.dataArray.length === 0 && typeof this.columns[0] === "undefined";
     let dataStart = 0;
+    const firstRow = parsedRows[0];
     if (isNewTable) {
-      const firstRow = parsedRows[0];
       if (firstRow.every((cell) => this.detectType(cell) === "string")) {
         const sample = parsedRows.length > 1 ? parsedRows[1] : firstRow;
         this.establishColumns(sample, firstRow);
@@ -167,6 +168,9 @@ export class DataEntryTable extends HTMLElement {
         this.establishColumns(firstRow);
         dataStart = 0;
       }
+    } else if (this._looksLikeHeaderRow(firstRow)) {
+      // Appending into an existing table — drop the header line if the CSV has one.
+      dataStart = 1;
     }
     const dataRows = parsedRows.slice(dataStart);
 
@@ -211,6 +215,26 @@ export class DataEntryTable extends HTMLElement {
     this.setDefaults(parsedValues);
     this.validateTypes(parsedValues);
     this.addDataRow(parsedValues);
+  }
+
+  // Heuristic: row 0 is a header iff its column count matches, every cell is
+  // string-typed, and at least half the cells case-insensitively equal the
+  // corresponding column's `field` or `name`. Matching the column names guards
+  // against accidentally dropping a legitimate first data row in an all-string
+  // table.
+  _looksLikeHeaderRow(row) {
+    if (!row || !row.length || row.length !== this.columns.length) return false;
+    if (!row.every((cell) => this.detectType(String(cell)) === "string")) return false;
+    let matches = 0;
+    for (let i = 0; i < row.length; i++) {
+      const cell = String(row[i]).toLowerCase();
+      if (!cell) continue;
+      const col = this.columns[i] || {};
+      const field = String(col.field || "").toLowerCase();
+      const name = String(col.name || "").toLowerCase();
+      if (cell === field || cell === name) matches++;
+    }
+    return matches >= Math.ceil(row.length / 2);
   }
 
   convertNulls(values) {
@@ -1259,6 +1283,7 @@ export class DataEntryTable extends HTMLElement {
     dlg.addEventListener("close", () => dlg.remove());
     document.body.appendChild(dlg);
     dlg.showModal();
+    makeDialogDraggable(dlg, dlg.querySelector("header") as HTMLElement);
   }
 
   _buildColumnEditorRow(col, originalIndex) {

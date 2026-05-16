@@ -1,4 +1,5 @@
 import type { DataStore } from "./data-store";
+import { makeDialogDraggable } from "./draggable-dialog";
 import { showAlert } from "./show-alert";
 
 export type JsonImportDeps = { store: DataStore; displayTables: () => void };
@@ -71,6 +72,7 @@ function askDbImportMode(filename: string, tableCount: number): Promise<"overwri
     });
     document.body.appendChild(dlg);
     dlg.showModal();
+    makeDialogDraggable(dlg);
   });
 }
 

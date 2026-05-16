@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_DATE_FORMAT, detectDateType, inferColumnDateFormat, parseFlexibleDate, parseFlexibleDateTime } from "./date-parse";
+import { DEFAULT_DATE_FORMAT, detectDateType, inferColumnDateFormat, parseFlexibleDate, parseFlexibleDateTime } from "../../src/date-parse";
 
 describe("parseFlexibleDate", () => {
   it("parses ISO YYYY-MM-DD", () => {

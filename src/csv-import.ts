@@ -1,4 +1,5 @@
 import type { DataStore } from "./data-store";
+import { makeDialogDraggable } from "./draggable-dialog";
 
 export type CsvImportDeps = {
   store: DataStore;
@@ -59,15 +60,26 @@ function importCsvIntoTable(el: any, file: File) {
 function askImportMode(tableName: string): Promise<"append" | "overwrite" | null> {
   return new Promise((resolve) => {
     const dlg = document.createElement("dialog");
-    dlg.style.cssText = "padding:16px;border:1px solid #888;border-radius:6px;font-family:Arial,sans-serif;";
+    dlg.className = "rounded-lg shadow-xl p-0 bg-white backdrop:bg-black/40 max-w-md w-[90vw]";
     dlg.innerHTML = `
-      <p style="margin:0 0 12px 0;">Import CSV into <strong></strong>:</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button type="button" value="append">Append</button>
-        <button type="button" value="overwrite">Overwrite</button>
-        <button type="button" value="cancel">Cancel</button>
-      </div>`;
-    dlg.querySelector("strong")!.textContent = tableName;
+      <header class="px-6 py-4 border-b border-slate-200">
+        <h3 class="text-lg font-semibold text-slate-800">Import CSV</h3>
+        <p class="text-sm text-slate-600 mt-1">Importing into <strong class="table-name text-slate-800"></strong>.</p>
+      </header>
+      <div class="px-6 py-4 space-y-3">
+        <button type="button" value="append" class="w-full text-left rounded border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-3">
+          <div class="font-medium text-emerald-800">Append</div>
+          <div class="text-sm text-emerald-700">Add the new rows to the existing data.</div>
+        </button>
+        <button type="button" value="overwrite" class="w-full text-left rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 px-4 py-3">
+          <div class="font-medium text-amber-800">Overwrite</div>
+          <div class="text-sm text-red-700">Clear every existing row first, then import.</div>
+        </button>
+      </div>
+      <footer class="flex justify-end gap-2 px-6 py-3 border-t border-slate-200 bg-slate-50">
+        <button type="button" value="cancel" class="rounded bg-slate-200 hover:bg-slate-300 px-4 py-1.5 text-sm">Cancel</button>
+      </footer>`;
+    dlg.querySelector(".table-name")!.textContent = tableName;
     const done = (v: string) => {
       dlg.close();
       dlg.remove();
@@ -83,5 +95,6 @@ function askImportMode(tableName: string): Promise<"append" | "overwrite" | null
     });
     document.body.appendChild(dlg);
     dlg.showModal();
+    makeDialogDraggable(dlg);
   });
 }

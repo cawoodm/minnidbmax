@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* Tailwind v4 preflight zeroes margins on <dialog>, which kills the browser's
+   native `margin: auto` centering of a modal dialog (showModal). Restore it. */
+dialog {
+  margin: auto;
+}
