@@ -27,7 +27,7 @@ async function handleCsvFile(file: File, table: string, deps: CsvImportDeps) {
   }
   // Else: drop on empty page area → create (or overwrite) a table named after the file.
   const baseName = file.name.replace(/\.csv$/i, "");
-  const code = baseName.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+  const code = baseName.replace(/[^a-zA-Z0-9]/g, "_");
   if (deps.store.get(code + ".table.json")) {
     if (!confirm(`Table '${baseName}' already exists. Overwrite?`)) return;
     const existing = document.getElementById("table-" + code);

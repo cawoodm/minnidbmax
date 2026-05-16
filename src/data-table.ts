@@ -241,7 +241,7 @@ export class DataEntryTable extends HTMLElement {
 
   convertNulls(values) {
     return values.map((value) => {
-      if (value === "null" || value === "NULL" || value === "undefined" || value === "undefined") {
+      if (value === "null" || value === "NULL" || value === "undefined") {
         return null;
       }
       return value;
@@ -717,7 +717,7 @@ export class DataEntryTable extends HTMLElement {
       const dataType = column.type;
       const classNames = [dataType];
       const isNull = cell === null;
-      if (isNull) classNames.push("null");
+      //if (isNull) classNames.push("null");
 
       let cellInner;
       if (dataType === "boolean") {

@@ -1,7 +1,8 @@
 # Change Log
 
 ## 2026-05-16
-- v0.0.21 Datetime column type
+- Case-sensitive table name uniqueness; preserve case in storage codes (v0.0.22)
+- Datetime column type (v0.0.21)
 
 ## 2026-05-13
 - Tailwind header (v0.0.15)

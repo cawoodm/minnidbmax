@@ -1,7 +1,6 @@
 # TODO
 
 ## UI Features
-* Dialogs should be centered not at the top left of the screen
 * Edit raw data
 
 ## DB Features
@@ -19,4 +18,3 @@
 ## Tech stuff
 * Modularize more
 * Hooks/Events for plugins
-* Move to typescript completely

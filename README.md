@@ -1,5 +1,5 @@
 # MinniDBMax
-Simple database with CSV import/export for viewing, managing structured data in a windowed-interface
+In-browser db with UI for data management. CSV or JSON import/export for viewing, managing structured data in a windowed-interface.
 
 Check it out at: http://cawoodm.github.io/minnidbmax/
 

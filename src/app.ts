@@ -90,7 +90,7 @@ function dataDump() {
 function addTable() {
   let title = prompt("Enter table title:");
   if (!title) return;
-  let code = title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+  let code = title.replace(/[^a-zA-Z0-9]/g, "_");
   if (store.get(code + ".table.json")) {
     showAlert("Table with this name already exists. Please choose a different name.", "error");
     return;
