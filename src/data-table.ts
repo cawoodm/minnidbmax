@@ -1,11 +1,8 @@
 "use strict";
 
 import { jsPanel } from "jspanel4/es6module/jspanel.js";
+import { DEFAULT_DATE_FORMAT, detectDateType, inferColumnDateFormat, parseFlexibleDate, parseFlexibleDateTime } from "./date-parse";
 import { showAlert as _showAlert } from "./show-alert.js";
-
-// Fallback when a column has no unambiguous date value to infer DMY vs MDY from.
-// Switzerland/EU convention: day-month-year.
-const DEFAULT_DATE_FORMAT = "YYYY-MM-DD";
 
 export class DataEntryTable extends HTMLElement {
   // Instance state (declared so TS sees these fields)
@@ -173,10 +170,10 @@ export class DataEntryTable extends HTMLElement {
     }
     const dataRows = parsedRows.slice(dataStart);
 
-    // Infer DMY/MDY per date column from the data rows; persist on the column.
+    // Infer DMY/MDY per date/datetime column from the data rows; persist on the column.
     this.columns.forEach((col, i) => {
-      if (col.type === "date" && !col.dateFormat) {
-        col.dateFormat = this.inferColumnDateFormat(dataRows, i) || DEFAULT_DATE_FORMAT;
+      if ((col.type === "date" || col.type === "datetime") && !col.dateFormat) {
+        col.dateFormat = inferColumnDateFormat(dataRows, i) || DEFAULT_DATE_FORMAT;
       }
     });
 
@@ -263,16 +260,9 @@ export class DataEntryTable extends HTMLElement {
       return "boolean";
     }
 
-    // Check if date — canonical YYYY-MM-DD, or D/M/YYYY, D-M-YYYY, D.M.YYYY (DMY/MDY both accepted).
-    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      const date = new Date(value);
-      if (!isNaN(date.getTime())) {
-        return "date";
-      }
-    }
-    if (/^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}$/.test(value)) {
-      return "date";
-    }
+    // Date / datetime (datetime is matched first inside detectDateType).
+    const dt = detectDateType(value);
+    if (dt) return dt;
 
     // Check if number
     if (!isNaN(parseFloat(value)) && isFinite(value)) {
@@ -281,66 +271,6 @@ export class DataEntryTable extends HTMLElement {
 
     // Default to string
     return "string";
-  }
-
-  // Parse YYYY-MM-DD or D/M/YYYY (with separator -, /, or .) into canonical YYYY-MM-DD.
-  // formatHint ("DMY" | "MDY") resolves ambiguous values (both segments ≤ 12).
-  // Returns null on invalid input.
-  parseFlexibleDate(value, formatHint) {
-    if (typeof value !== "string") value = String(value);
-    const pad = (n) => String(n).padStart(2, "0");
-    let m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) {
-      const d = new Date(value);
-      return isNaN(d.getTime()) ? null : value;
-    }
-    m = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
-    if (!m) return null;
-    const a = parseInt(m[1], 10);
-    const b = parseInt(m[2], 10);
-    const year = m[3];
-    let day, month;
-    if (a > 12 && b <= 12) {
-      day = a;
-      month = b;
-    } else if (b > 12 && a <= 12) {
-      day = b;
-      month = a;
-    } else if (a > 12 && b > 12) {
-      return null; // both can't be month
-    } else {
-      // ambiguous — use hint
-      if (formatHint === "MDY") {
-        month = a;
-        day = b;
-      } else {
-        // default DMY
-        day = a;
-        month = b;
-      }
-    }
-    if (day < 1 || day > 31 || month < 1 || month > 12) return null;
-    const canonical = `${year}-${pad(month)}-${pad(day)}`;
-    const d = new Date(canonical);
-    if (isNaN(d.getTime())) return null;
-    // Round-trip guard against e.g. 2024-02-31 → JS rolls over silently
-    if (d.toISOString().split("T")[0] !== canonical) return null;
-    return canonical;
-  }
-
-  // Scan a column for an unambiguous DMY or MDY date; null if none found.
-  inferColumnDateFormat(parsedRows, columnIndex) {
-    for (const row of parsedRows) {
-      const val = row[columnIndex];
-      if (!val || typeof val !== "string") continue;
-      const m = val.match(/^(\d{1,2})[-/.](\d{1,2})[-/.]\d{4}$/);
-      if (!m) continue;
-      const a = parseInt(m[1], 10);
-      const b = parseInt(m[2], 10);
-      if (a > 12 && b <= 12) return "DMY";
-      if (b > 12 && a <= 12) return "MDY";
-    }
-    return null;
   }
 
   // Format value based on detected type
@@ -355,8 +285,13 @@ export class DataEntryTable extends HTMLElement {
       case "number":
         return parseFloat(value);
       case "date": {
-        const canonical = this.parseFlexibleDate(value, col.dateFormat || DEFAULT_DATE_FORMAT);
+        const canonical = parseFlexibleDate(value, col.dateFormat || DEFAULT_DATE_FORMAT);
         if (canonical === null) console.warn(`Unparseable date "${value}" stored as null`);
+        return canonical;
+      }
+      case "datetime": {
+        const canonical = parseFlexibleDateTime(value, col.dateFormat || DEFAULT_DATE_FORMAT);
+        if (canonical === null) console.warn(`Unparseable datetime "${value}" stored as null`);
         return canonical;
       }
       default:
@@ -796,6 +731,14 @@ export class DataEntryTable extends HTMLElement {
       }
       return String(value);
     }
+    if (dataType === "datetime" && typeof value === "string") {
+      const m = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+      if (m) {
+        const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+        if (!isNaN(d.getTime())) return d.toLocaleString();
+      }
+      return String(value);
+    }
     return String(value);
   }
 
@@ -818,6 +761,13 @@ export class DataEntryTable extends HTMLElement {
         } catch (e) {
           input.value = "";
         }
+      }
+    } else if (column.type === "datetime") {
+      input.type = "datetime-local";
+      input.step = "1";
+      if (value !== null) {
+        // canonical is "YYYY-MM-DD HH:MM:SS" — convert space to T for the input
+        input.value = String(value).replace(" ", "T");
       }
     } else {
       input.type = "text";
@@ -843,9 +793,15 @@ export class DataEntryTable extends HTMLElement {
           input.focus();
           return;
         }
-        if (column.type === "date" && newValue !== "" && this.parseFlexibleDate(newValue, column.dateFormat || DEFAULT_DATE_FORMAT) === null) {
+        if (column.type === "date" && newValue !== "" && parseFlexibleDate(newValue, column.dateFormat || DEFAULT_DATE_FORMAT) === null) {
           done = false;
           alert("Invalid date");
+          input.focus();
+          return;
+        }
+        if (column.type === "datetime" && newValue !== "" && parseFlexibleDateTime(newValue, column.dateFormat || DEFAULT_DATE_FORMAT) === null) {
+          done = false;
+          alert("Invalid datetime");
           input.focus();
           return;
         }
@@ -1123,7 +1079,8 @@ export class DataEntryTable extends HTMLElement {
         } else {
           const value = field.value;
           if (column.type === "number" && isNaN(parseFloat(value))) return alert("Invalid number");
-          if (column.type === "date" && this.parseFlexibleDate(value, column.dateFormat || DEFAULT_DATE_FORMAT) === null) return alert("Invalid date");
+          if (column.type === "date" && parseFlexibleDate(value, column.dateFormat || DEFAULT_DATE_FORMAT) === null) return alert("Invalid date");
+          if (column.type === "datetime" && parseFlexibleDateTime(value, column.dateFormat || DEFAULT_DATE_FORMAT) === null) return alert("Invalid datetime");
           if (!this.dataArray[dataIndex]) return alert(`Missing row: ${dataIndex}`);
           this.dataArray[dataIndex][fieldIndex] = this.serializeToDB(value, column);
         }
@@ -1153,7 +1110,7 @@ export class DataEntryTable extends HTMLElement {
       resizeit: false,
       header: false,
       headerControls: "none",
-      panelSize: { width: 160, height: "auto" },
+      panelSize: { width: 160 },
       contentOverflow: "visible",
       content: function (cm) {
         // jsPanel's function-style content option discards the return value — mutate cm.content directly.
@@ -1327,6 +1284,7 @@ export class DataEntryTable extends HTMLElement {
           <option value="string">string</option>
           <option value="number">number</option>
           <option value="date">date</option>
+          <option value="datetime">datetime</option>
           <option value="boolean">boolean</option>
         </select>
       </td>

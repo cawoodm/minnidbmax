@@ -1,33 +1,128 @@
 {
   "fruits.table.json": {
     "dataArray": [
-      ["Apple", 1.2, "2024-01-01"],
-      ["Banana", 0.5, "2024-01-02"],
-      ["Cherry", 3.0, "2024-01-03"]
+      [
+        "Apple",
+        1.2,
+        "2024-01-01"
+      ],
+      [
+        "Banana",
+        0.5,
+        "2024-01-02"
+      ],
+      [
+        "Cherry",
+        3.0,
+        "2024-01-03"
+      ]
     ],
     "columns": [
-      { "field": "name", "name": "Name", "type": "string", "default": null, "max": 0, "dateFormat": null, "isUnique": false, "isNotNull": false, "hidden": false, "width": null },
-      { "field": "price", "name": "Price", "type": "number", "default": null, "max": 0, "dateFormat": null, "isUnique": false, "isNotNull": false, "hidden": false, "width": null },
-      { "field": "added", "name": "Added", "type": "date", "default": null, "max": 0, "dateFormat": "YYYY-MM-DD", "isUnique": false, "isNotNull": false, "hidden": false, "width": null }
+      {
+        "field": "name",
+        "name": "Name",
+        "type": "string",
+        "default": null,
+        "max": 0,
+        "dateFormat": null,
+        "isUnique": false,
+        "isNotNull": false,
+        "hidden": false,
+        "width": null
+      },
+      {
+        "field": "price",
+        "name": "Price",
+        "type": "number",
+        "default": null,
+        "max": 0,
+        "dateFormat": null,
+        "isUnique": false,
+        "isNotNull": false,
+        "hidden": false,
+        "width": null
+      },
+      {
+        "field": "added",
+        "name": "Added",
+        "type": "date",
+        "default": null,
+        "max": 0,
+        "dateFormat": "YYYY-MM-DD",
+        "isUnique": false,
+        "isNotNull": false,
+        "hidden": false,
+        "width": null
+      }
     ],
-    "elementRect": { "x": 100, "y": 100, "width": 500, "height": 300, "zIndex": 1 },
+    "elementRect": {
+      "x": 100,
+      "y": 100,
+      "width": 500,
+      "height": 300,
+      "zIndex": 1
+    },
     "sortColumn": -1,
     "sortDirection": "asc",
-    "displayOrder": [0, 1, 2]
+    "displayOrder": [
+      0,
+      1,
+      2
+    ]
   },
   "colors.table.json": {
     "dataArray": [
-      ["red", "#ff0000"],
-      ["green", "#00ff00"],
-      ["blue", "#0000ff"]
+      [
+        "red",
+        "#ff0000"
+      ],
+      [
+        "green",
+        "#00ff00"
+      ],
+      [
+        "blue",
+        "#0000ff"
+      ]
     ],
     "columns": [
-      { "field": "name", "name": "Name", "type": "string", "default": null, "max": 0, "dateFormat": null, "isUnique": false, "isNotNull": false, "hidden": false, "width": null },
-      { "field": "hex", "name": "Hex", "type": "string", "default": null, "max": 0, "dateFormat": null, "isUnique": false, "isNotNull": false, "hidden": false, "width": null }
+      {
+        "field": "name",
+        "name": "Name",
+        "type": "string",
+        "default": null,
+        "max": 0,
+        "dateFormat": null,
+        "isUnique": false,
+        "isNotNull": false,
+        "hidden": false,
+        "width": null
+      },
+      {
+        "field": "hex",
+        "name": "Hex",
+        "type": "string",
+        "default": null,
+        "max": 0,
+        "dateFormat": null,
+        "isUnique": false,
+        "isNotNull": false,
+        "hidden": false,
+        "width": null
+      }
     ],
-    "elementRect": { "x": 150, "y": 200, "width": 400, "height": 250, "zIndex": 2 },
+    "elementRect": {
+      "x": 150,
+      "y": 200,
+      "width": 400,
+      "height": 250,
+      "zIndex": 2
+    },
     "sortColumn": -1,
     "sortDirection": "asc",
-    "displayOrder": [0, 1]
+    "displayOrder": [
+      0,
+      1
+    ]
   }
 }

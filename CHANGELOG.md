@@ -1,6 +1,7 @@
 # Change Log
 
-Grouped by day, derived from full git history. Most recent first
+## 2026-05-16
+- v0.0.21 Datetime column type
 
 ## 2026-05-13
 - Tailwind header (v0.0.15)

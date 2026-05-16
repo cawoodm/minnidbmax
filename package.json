@@ -1,6 +1,6 @@
 {
   "name": "minni-db-max",
-  "version": "0.0.20",
+  "version": "0.0.21",
   "author": {
     "name": "Marc Cawood"
   },
@@ -10,7 +10,9 @@
     "build": "vite build",
     "publish": "vite build && pwsh -File ./publish.ps1",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -18,7 +20,8 @@
     "prettier-eslint": "^16.3.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^5.8.3",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^2.0.0"
   },
   "dependencies": {
     "jspanel4": "^4.16.1",
