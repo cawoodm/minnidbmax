@@ -11,6 +11,7 @@ export class DataEntryTable extends HTMLElement {
   columns: any[] = [];
   filters: string[] = [];
   globalFilter: string = "";
+  localFilter: string = "";
   elementRect: any = {};
   sortColumn: number = -1;
   sortDirection: "asc" | "desc" = "asc";
@@ -501,6 +502,11 @@ export class DataEntryTable extends HTMLElement {
     const g = (this.globalFilter || "").trim().toLowerCase();
     if (g) {
       rows = rows.filter((row) => this.columns.some((col, i) => this._formatCellText(row[i], col.type).toLowerCase().includes(g)));
+    }
+    // Local (per-table) filter: same shape as global, scoped to this table only.
+    const l = (this.localFilter || "").trim().toLowerCase();
+    if (l) {
+      rows = rows.filter((row) => this.columns.some((col, i) => this._formatCellText(row[i], col.type).toLowerCase().includes(l)));
     }
     // Apply sort. Always copy so callers don't mutate dataArray.
     rows = [...rows];
@@ -1646,6 +1652,13 @@ export class DataEntryTable extends HTMLElement {
     const next = (term || "").trim().toLowerCase();
     if (next === this.globalFilter) return;
     this.globalFilter = next;
+    this._renderBodyOnly();
+  }
+
+  setLocalFilter(term: string) {
+    const next = (term || "").trim().toLowerCase();
+    if (next === this.localFilter) return;
+    this.localFilter = next;
     this._renderBodyOnly();
   }
 

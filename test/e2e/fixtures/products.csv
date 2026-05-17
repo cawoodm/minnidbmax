@@ -1,6 +1,5 @@
-ProductID,ProductName,Price
-101,Laptop,999.99
-102,Mouse,29.99
-103,Keyboard,79.99
-104,Alice Band,14.99
-105,Monitor,299.99
+sku,name,price
+A001,Widget,9.99
+A002,Sprocket,12.50
+A003,Cog,4.25
+A004,Gear,18.00

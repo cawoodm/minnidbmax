@@ -1,6 +1,7 @@
 # TODO
 
 ## UI Features
+* Make a global footer containing workspace selector, push, pull and dump buttons
 * Edit raw data
 
 ## DB Features
@@ -17,4 +18,5 @@
 
 ## Tech stuff
 * Modularize more
+  * Functional and tested csv handling module
 * Hooks/Events for plugins

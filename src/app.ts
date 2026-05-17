@@ -160,6 +160,20 @@ function generateTableInUI(code, data) {
     },
   });
 
+  // Per-panel local search input. Mounted into the panel's controlbar (sibling of
+  // .jsPanel-titlebar, which is the drag handle). Stops pointerdown propagation
+  // defensively in case a future jsPanel default expands drag scope.
+  const localSearch = document.createElement("input");
+  localSearch.type = "search";
+  localSearch.placeholder = "Search…";
+  localSearch.title = "Search this table";
+  localSearch.className = "jsPanel-local-search";
+  localSearch.style.cssText = "margin:0 6px;padding:1px 6px;font-size:12px;width:130px;height:22px;border:1px solid #b0b0b0;border-radius:3px;outline:none;background:#fff;color:#222;";
+  localSearch.addEventListener("input", () => newTable.setLocalFilter(localSearch.value));
+  localSearch.addEventListener("pointerdown", (e) => e.stopPropagation());
+  const controlbar = panel.querySelector(".jsPanel-controlbar") as HTMLElement | null;
+  if (controlbar) controlbar.prepend(localSearch);
+
   // jsPanel dispatches resize/drag/close events on `document`; each event carries
   // a `.panel` reference, which we use to filter to this instance.
   const onResize = (e: Event) => {

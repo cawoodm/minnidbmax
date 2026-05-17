@@ -1,6 +1,7 @@
 # Change Log
 
 ## 2026-05-17
+- Local (per-table) search (v0.0.24)
 - Global search (v0.0.23)
 
 ## 2026-05-16
