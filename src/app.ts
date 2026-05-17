@@ -173,19 +173,39 @@ function generateTableInUI(code, data) {
     },
   });
 
-  // Per-panel local search input. Mounted into the panel's controlbar (sibling of
-  // .jsPanel-titlebar, which is the drag handle). Stops pointerdown propagation
-  // defensively in case a future jsPanel default expands drag scope.
+  // Per-panel local search: collapsed by default to a magnifying-glass icon in the panel
+  // controlbar (sibling of .jsPanel-titlebar, which is the drag handle). Click the icon to
+  // expand to an input; the input collapses back to the icon on blur if empty.
+  const localToggle = document.createElement("button");
+  localToggle.type = "button";
+  localToggle.className = "material-icons jsPanel-btn-localsearch";
+  localToggle.title = "Search this table";
+  localToggle.textContent = "search";
+  localToggle.style.cssText = "background:none;border:0;cursor:pointer;padding:2px 4px;color:#666;font-size:18px;line-height:1;";
   const localSearch = document.createElement("input");
   localSearch.type = "search";
   localSearch.placeholder = "Search…";
   localSearch.title = "Search this table";
   localSearch.className = "jsPanel-local-search";
-  localSearch.style.cssText = "margin:0 6px;padding:1px 6px;font-size:12px;width:130px;height:22px;border:1px solid #b0b0b0;border-radius:3px;outline:none;background:#fff;color:#222;";
+  localSearch.style.cssText = "display:none;margin:0 6px;padding:1px 6px;font-size:12px;width:130px;height:22px;border:1px solid #b0b0b0;border-radius:3px;outline:none;background:#fff;color:#222;";
+  localToggle.addEventListener("click", () => {
+    localToggle.style.display = "none";
+    localSearch.style.display = "inline-block";
+    localSearch.focus();
+  });
+  localSearch.addEventListener("blur", () => {
+    if (!localSearch.value) {
+      localSearch.style.display = "none";
+      localToggle.style.display = "inline-flex";
+    }
+  });
   localSearch.addEventListener("input", () => newTable.setLocalFilter(localSearch.value));
   localSearch.addEventListener("pointerdown", (e) => e.stopPropagation());
   const controlbar = panel.querySelector(".jsPanel-controlbar") as HTMLElement | null;
-  if (controlbar) controlbar.prepend(localSearch);
+  if (controlbar) {
+    controlbar.prepend(localSearch);
+    controlbar.prepend(localToggle);
+  }
 
   // jsPanel dispatches resize/drag/close events on `document`; each event carries
   // a `.panel` reference, which we use to filter to this instance.
@@ -363,7 +383,20 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("dataPull").addEventListener("click", dataPull);
   document.getElementById("dataDump").addEventListener("click", dataDump);
   document.getElementById("addTable").addEventListener("click", addTable);
+  const searchToggle = document.getElementById("globalSearchToggle") as HTMLButtonElement;
+  const searchBox = document.getElementById("globalSearchBox") as HTMLDivElement;
   const searchEl = document.getElementById("globalSearch") as HTMLInputElement;
+  searchToggle.addEventListener("click", () => {
+    searchToggle.classList.add("hidden");
+    searchBox.classList.remove("hidden");
+    searchEl.focus();
+  });
+  searchEl.addEventListener("blur", () => {
+    if (!searchEl.value) {
+      searchBox.classList.add("hidden");
+      searchToggle.classList.remove("hidden");
+    }
+  });
   searchEl.addEventListener("input", () => {
     globalSearchTerm = searchEl.value;
     document.querySelectorAll<DataEntryTable>("data-entry-table").forEach((t) => t.setGlobalFilter(globalSearchTerm));

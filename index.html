@@ -13,7 +13,8 @@
         <span class="text-xs text-slate-400">v0.0.26</span>
       </div>
       <div class="flex items-center gap-2">
-        <div class="relative">
+        <button id="globalSearchToggle" type="button" title="Search all tables" class="material-icons text-slate-300 hover:text-white p-1.5 rounded cursor-pointer leading-none">search</button>
+        <div id="globalSearchBox" class="relative hidden">
           <span class="material-icons absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">search</span>
           <input
             id="globalSearch"
