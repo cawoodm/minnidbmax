@@ -42,6 +42,15 @@ let frontRank = (() => {
 
 let globalSearchTerm = "";
 
+// Vertical chrome heights, measured once at DOM ready. Panels are constrained
+// to drag/resize within the space between header and (footer + minimized dock).
+let headerHeight = 48;
+let footerHeight = 48;
+const dockHeight = 44; // reserved strip above the footer for minimized panels
+function panelContainment(): [number, number, number, number] {
+  return [headerHeight, 0, footerHeight + dockHeight, 0];
+}
+
 import { SyncherGist } from "./syncher-gist.js";
 const gistUsername = store.get(".gist-user");
 const gistToken = store.get(".gist-token");
@@ -125,6 +134,10 @@ function generateTableInUI(code, data) {
     iconfont: "material-icons",
     panelSize: rect?.width && rect?.height ? { width: rect.width, height: rect.height } : { width: 600, height: 400 },
     position: rect?.x != null && rect?.y != null ? { my: "left-top", at: "left-top", offsetX: rect.x, offsetY: rect.y } : { my: "center", at: "center" },
+    dragit: { containment: panelContainment() },
+    resizeit: { containment: panelContainment() },
+    maximizedMargin: panelContainment(),
+    minimizeTo: "#minimizedDock",
     onbeforeclose: () => deleteTable(newTable),
     onminimized: newTable.minimizedCallback.bind(newTable),
     onmaximized: newTable.maximizedCallback.bind(newTable),
@@ -343,6 +356,9 @@ function updateEmptyState() {
 // Example of how to interact with the component programmatically
 document.addEventListener("DOMContentLoaded", function () {
   //gistSynch();
+  headerHeight = document.querySelector("header")?.getBoundingClientRect().height ?? headerHeight;
+  footerHeight = document.querySelector("footer")?.getBoundingClientRect().height ?? footerHeight;
+  document.documentElement.style.setProperty("--footer-height", `${footerHeight}px`);
   initWorkspaceSelect(document.getElementById("workspaceSelect") as HTMLSelectElement);
   displayTables();
   document.getElementById("dataPush").addEventListener("click", dataPush);

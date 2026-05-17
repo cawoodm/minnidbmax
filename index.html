@@ -4,21 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link type="image/png" sizes="96x96" rel="icon" href="favicon.png" />
-    <title>MinniDBMax v0.0.24</title>
+    <title>MinniDBMax v0.0.26</title>
   </head>
   <body>
     <header class="flex items-center justify-between gap-4 px-4 py-2 bg-slate-800 text-white shadow-md">
       <div class="flex items-center gap-3">
         <h1 class="text-lg font-semibold tracking-wide">MinniDBMax</h1>
-        <span class="text-xs text-slate-400">v0.0.24</span>
-        <select id="workspaceSelect" class="bg-slate-700 text-white rounded px-2 py-1 text-sm border border-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400"></select>
+        <span class="text-xs text-slate-400">v0.0.25</span>
       </div>
       <div class="flex items-center gap-2">
         <div class="relative">
           <span class="material-icons absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">search</span>
-          <input id="globalSearch" type="search" placeholder="Search all tables…" class="bg-slate-700 text-white rounded pl-8 pr-2 py-1.5 text-sm border border-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-56" />
+          <input
+            id="globalSearch"
+            type="search"
+            placeholder="Search all tables…"
+            class="bg-slate-700 text-white rounded pl-8 pr-2 py-1.5 text-sm border border-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-56"
+          />
         </div>
         <button id="addTable" class="rounded bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-sm font-medium transition-colors">+ New Table</button>
+      </div>
+    </header>
+    <footer class="fixed bottom-0 left-0 right-0 flex items-center justify-between gap-4 px-4 py-2 bg-slate-800 text-white shadow-[0_-2px_4px_rgba(0,0,0,0.1)]">
+      <div class="flex items-center gap-3">
+        <select id="workspaceSelect" class="bg-slate-700 text-white rounded px-2 py-1 text-sm border border-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400"></select>
+      </div>
+      <div class="flex items-center gap-2">
         <button id="dataPush" class="rounded bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm transition-colors inline-flex items-center gap-1.5" title="Push data to Gist">
           <span class="material-icons text-lg leading-none">cloud_upload</span>Push
         </button>
@@ -29,7 +40,7 @@
           <span class="material-icons text-lg leading-none">archive</span>Dump
         </button>
       </div>
-    </header>
+    </footer>
 
     <style>
       #empty-state {
@@ -52,6 +63,25 @@
       }
     </style>
     <div id="empty-state" class="hide">drag and drop a .csv file here to begin...</div>
+    <div id="minimizedDock"></div>
+    <style>
+      #minimizedDock {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: var(--footer-height, 48px);
+        min-height: 40px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 4px 8px;
+        pointer-events: none;
+        z-index: 50;
+      }
+      #minimizedDock > * {
+        pointer-events: auto;
+      }
+    </style>
 
     <template id="data-entry-template">
       <style>

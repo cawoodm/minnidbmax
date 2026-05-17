@@ -1,6 +1,7 @@
 # Change Log
 
 ## 2026-05-17
+- Footer (v0.0.25)
 - Local (per-table) search (v0.0.24)
 - Global search (v0.0.23)
 
