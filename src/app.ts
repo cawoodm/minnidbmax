@@ -52,37 +52,100 @@ function panelContainment(): [number, number, number, number] {
 }
 
 import { SyncherGist } from "./syncher-gist.js";
-const gistUsername = store.get(".gist-user");
-const gistToken = store.get(".gist-token");
-const gistId = store.get(".gist-id");
-const syncher = SyncherGist(gistUsername, gistToken, gistId, store);
+import { makeDialogDraggable } from "./draggable-dialog";
 
-function syncherValidate() {
-  if (!gistUsername) {
-    showAlert(`Please set your Git username in browser store with key '/minnidbmax/${workspace}/.gist-user'.`, "error", "Gist sync");
-    return false;
-  }
-  if (!gistToken) {
-    showAlert(`Please set your Gist token in browser store with key '/minnidbmax/${workspace}/.gist-token'.`, "error", "Gist sync");
-    return false;
-  }
-  if (!gistId) {
-    showAlert(`Please set your Gist id in browser store with key '/minnidbmax/${workspace}/.gist-id'.`, "error", "Gist sync");
-    return false;
-  }
-  return true;
+// Build a fresh SyncherGist each call so credentials updated via the settings dialog
+// take effect immediately (the previous module-singleton captured stale values).
+function makeSyncher() {
+  return SyncherGist(store.get(".gist-user"), store.get(".gist-token"), store.get(".gist-id"), store);
+}
+
+// Ensure all three Gist credentials are set. If any are missing, open the settings dialog
+// and let the user fill them in. Resolves to true if credentials are now present (either
+// because they already were, or because the user filled them in), false on Cancel.
+async function ensureGistCredentials(): Promise<boolean> {
+  if (store.get(".gist-user") && store.get(".gist-token") && store.get(".gist-id")) return true;
+  return openSyncSettingsDialog();
+}
+
+function openSyncSettingsDialog(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog");
+    dlg.className = "rounded-lg shadow-xl p-0 bg-white backdrop:bg-black/40 max-w-md w-[90vw]";
+    dlg.innerHTML = `
+      <header class="px-6 py-4 border-b border-slate-200">
+        <h3 class="text-lg font-semibold text-slate-800">Gist sync settings</h3>
+        <p class="text-sm text-slate-600 mt-1">Configure GitHub credentials so Push/Pull can read/write your Gist.</p>
+      </header>
+      <div class="px-6 py-4 space-y-3">
+        <label class="block">
+          <span class="text-sm font-medium text-slate-700">GitHub username</span>
+          <input name="user" type="text" autocomplete="username" class="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-slate-700">Personal access token</span>
+          <p class="text-xs text-slate-500 mb-1">Fine-grained PAT with <code>gist</code> scope — <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener" class="text-blue-600 hover:underline">create one</a>.</p>
+          <input name="token" type="password" autocomplete="off" spellcheck="false" class="w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-medium text-slate-700">Gist ID</span>
+          <p class="text-xs text-slate-500 mb-1">The hash from <code>https://gist.github.com/&lt;you&gt;/<strong>&lt;id&gt;</strong></code>.</p>
+          <input name="id" type="text" spellcheck="false" class="w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono" />
+        </label>
+      </div>
+      <footer class="flex justify-end gap-2 px-6 py-3 border-t border-slate-200 bg-slate-50">
+        <button type="button" class="cancel rounded bg-slate-200 hover:bg-slate-300 px-4 py-1.5 text-sm">Cancel</button>
+        <button type="button" class="save rounded bg-blue-600 hover:bg-blue-500 px-4 py-1.5 text-sm text-white font-medium">Save</button>
+      </footer>`;
+    const userInput = dlg.querySelector("input[name='user']") as HTMLInputElement;
+    const tokenInput = dlg.querySelector("input[name='token']") as HTMLInputElement;
+    const idInput = dlg.querySelector("input[name='id']") as HTMLInputElement;
+    userInput.value = store.get(".gist-user") || "";
+    tokenInput.value = store.get(".gist-token") || "";
+    idInput.value = store.get(".gist-id") || "";
+
+    let saved = false;
+    dlg.querySelector(".cancel").addEventListener("click", () => dlg.close());
+    dlg.querySelector(".save").addEventListener("click", () => {
+      const user = userInput.value.trim();
+      const token = tokenInput.value.trim();
+      const id = idInput.value.trim();
+      if (!user || !token || !id) {
+        showAlert("All three fields are required.", "error", "Gist sync");
+        return;
+      }
+      store.set(".gist-user", user);
+      store.set(".gist-token", token);
+      store.set(".gist-id", id);
+      saved = true;
+      dlg.close();
+    });
+    dlg.addEventListener("close", () => {
+      dlg.remove();
+      resolve(saved);
+    });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    makeDialogDraggable(dlg, dlg.querySelector("header") as HTMLElement);
+    userInput.focus();
+  });
 }
 
 async function dataPush() {
-  if (!syncherValidate()) return false;
-  await syncher.save();
+  if (!(await ensureGistCredentials())) return;
+  try {
+    await makeSyncher().save();
+    showAlert("Data pushed to Gist.", "success", "Gist sync");
+  } catch (e) {
+    if (e instanceof Error) showAlert("Error pushing to Gist: " + e.message, "error", "Gist sync");
+    console.error(e);
+  }
 }
 
 async function dataPull() {
-  if (!syncherValidate()) return false;
-  syncherValidate();
+  if (!(await ensureGistCredentials())) return;
   try {
-    await syncher.load();
+    await makeSyncher().load();
     displayTables();
   } catch (e) {
     if (e instanceof Error) {
