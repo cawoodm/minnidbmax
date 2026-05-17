@@ -6,87 +6,107 @@ test.describe("Filtering", () => {
     await waitForPanel(page, "people");
     // Close the auto-opened column editor.
     await page.locator("dialog:has-text('Edit columns') button.save").click();
-    // Reveal the filter row via the in-table filter toggle (first column header).
-    await page.locator("#table-people button.filter-toggle").click();
   });
 
-  test("typing in a filter narrows rows live without rebuilding the input", async ({ page }) => {
-    const cityFilter = page.locator("#table-people input.filter-input[fieldIndex='2']");
-    await expect(cityFilter).toBeVisible();
-    await cityFilter.focus();
-    await cityFilter.type("Zur");
+  // Helper: open a column's filter dropdown by clicking its ▾ trigger in the header.
+  const openDropdown = async (page: any, fieldIndex: number) =>
+    page.locator(`#table-people button.col-filter-trigger[data-index="${fieldIndex}"]`).click();
+
+  test("typing in the dropdown filter narrows rows live", async ({ page }) => {
+    await openDropdown(page, 2);
+    const input = page.locator(".column-filter-dropdown input.cfd-input");
+    await expect(input).toBeVisible();
+    await input.fill("Zur");
 
     // Two rows match Zurich.
     const rows = await readTableRows(page, "people");
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r[2].toLowerCase().includes("zur"))).toBe(true);
-
-    // Input keeps focus & value after the partial render.
-    await expect(cityFilter).toBeFocused();
-    await expect(cityFilter).toHaveValue("Zur");
+    await expect(input).toHaveValue("Zur");
   });
 
   test("clearing the filter restores all rows", async ({ page }) => {
-    const cityFilter = page.locator("#table-people input.filter-input[fieldIndex='2']");
-    await cityFilter.fill("Zurich");
+    await openDropdown(page, 2);
+    const input = page.locator(".column-filter-dropdown input.cfd-input");
+    await input.fill("Zurich");
     expect(await readTableRows(page, "people")).toHaveLength(2);
 
-    await cityFilter.fill("");
+    await input.fill("");
     expect(await readTableRows(page, "people")).toHaveLength(5);
   });
 
   test("filtering on multiple columns ANDs the conditions", async ({ page }) => {
-    const cityFilter = page.locator("#table-people input.filter-input[fieldIndex='2']");
-    const ageFilter = page.locator("#table-people input.filter-input[fieldIndex='1']");
-
-    await cityFilter.fill("Zurich"); // matches Alice (30) + Dave (35)
+    // City filter
+    await openDropdown(page, 2);
+    await page.locator(".column-filter-dropdown input.cfd-input").fill("Zurich");
+    // Close dropdown by clicking outside (so the next one can open)
+    await page.locator(".column-filter-dropdown button.cfd-close").click();
     expect(await readTableRows(page, "people")).toHaveLength(2);
 
-    await ageFilter.fill("30"); // narrows to just Alice
+    // Age filter — narrows to just Alice
+    await openDropdown(page, 1);
+    await page.locator(".column-filter-dropdown input.cfd-input").fill("30");
     const rows = await readTableRows(page, "people");
     expect(rows).toHaveLength(1);
     expect(rows[0][0]).toBe("Alice");
 
-    // Clearing one filter widens via AND of the remaining filters.
-    await ageFilter.fill("");
+    // Clearing the age filter widens via AND of the remaining filters.
+    await page.locator(".column-filter-dropdown input.cfd-input").fill("");
     expect(await readTableRows(page, "people")).toHaveLength(2);
   });
 
   test("sort coexists with active filter", async ({ page }) => {
-    const cityFilter = page.locator("#table-people input.filter-input[fieldIndex='2']");
-    await cityFilter.fill("Zurich");
+    await openDropdown(page, 2);
+    await page.locator(".column-filter-dropdown input.cfd-input").fill("Zurich");
+    await page.locator(".column-filter-dropdown button.cfd-close").click();
     expect(await readTableRows(page, "people")).toHaveLength(2);
 
     // Click the "age" header to sort ascending.
-    await page.locator("#table-people th[data-index='1']").click();
+    await page.locator("#table-people th[data-index='1'] .column-name").click();
     let rows = await readTableRows(page, "people");
     expect(rows.map((r) => r[0])).toEqual(["Alice", "Dave"]); // 30 < 35
 
     // Click again → descending.
-    await page.locator("#table-people th[data-index='1']").click();
+    await page.locator("#table-people th[data-index='1'] .column-name").click();
     rows = await readTableRows(page, "people");
     expect(rows.map((r) => r[0])).toEqual(["Dave", "Alice"]);
   });
 
-  test("autocomplete datalist exposes the column's unique values", async ({ page }) => {
-    const cityFilter = page.locator("#table-people input.filter-input[fieldIndex='2']");
-    await expect(cityFilter).toHaveAttribute("list", "filter-list-2");
-
+  test("dropdown lists all unique column values (faceted by other filters)", async ({ page }) => {
+    await openDropdown(page, 2);
     const optionTexts = await page
-      .locator("#table-people datalist#filter-list-2 option")
-      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value).sort());
-    // people.csv has 4 distinct cities: Bern, Geneva, Lausanne, Zurich.
+      .locator(".column-filter-dropdown ul.cfd-list li")
+      .evaluateAll((opts) => opts.map((o) => (o as HTMLElement).textContent || "").sort());
+    // people.csv has 4 distinct cities.
     expect(optionTexts).toEqual(["Bern", "Geneva", "Lausanne", "Zurich"]);
   });
 
-  test("faceted datalist: filtering one column narrows the others' suggestions", async ({ page }) => {
-    const cityFilter = page.locator("#table-people input.filter-input[fieldIndex='2']");
-    await cityFilter.fill("Zurich"); // restricts to Alice + Dave
+  test("clicking an option in the dropdown sets the filter to that value", async ({ page }) => {
+    await openDropdown(page, 2);
+    await page.locator(".column-filter-dropdown ul.cfd-list li", { hasText: "Geneva" }).click();
+    await expect(page.locator(".column-filter-dropdown input.cfd-input")).toHaveValue("Geneva");
+    const rows = await readTableRows(page, "people");
+    expect(rows).toHaveLength(1);
+    expect(rows[0][0]).toBe("Bob");
+  });
 
+  test("faceted dropdown: filtering one column narrows the others' option lists", async ({ page }) => {
+    await openDropdown(page, 2);
+    await page.locator(".column-filter-dropdown input.cfd-input").fill("Zurich"); // restricts to Alice + Dave
+    await page.locator(".column-filter-dropdown button.cfd-close").click();
+
+    await openDropdown(page, 1);
     const ageOptions = await page
-      .locator("#table-people datalist#filter-list-1 option")
-      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value).sort());
-    // After narrowing by city=Zurich, age dropdown only sees 30 and 35.
+      .locator(".column-filter-dropdown ul.cfd-list li")
+      .evaluateAll((opts) => opts.map((o) => (o as HTMLElement).textContent || "").sort());
     expect(ageOptions).toEqual(["30", "35"]);
+  });
+
+  test("close × dismisses the dropdown", async ({ page }) => {
+    await openDropdown(page, 2);
+    const dropdown = page.locator(".column-filter-dropdown");
+    await expect(dropdown).toBeVisible();
+    await dropdown.locator("button.cfd-close").click();
+    await expect(dropdown).toHaveCount(0);
   });
 });

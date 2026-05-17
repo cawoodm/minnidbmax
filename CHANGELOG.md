@@ -1,6 +1,7 @@
 # Change Log
 
 ## 2026-05-17
+- Filter dropdowns (v0.0.28)
 - Gist sync settings dialog (v0.0.27)
 - Column editor confirms import (v0.0.26)
 - Footer (v0.0.25)

@@ -29,6 +29,9 @@ export class DataEntryTable extends HTMLElement {
   _resizeRaf: number | null = null;
   _displayData: any[] | null = null;
   _originalIndexMap: Map<any, number> | null = null;
+  // Active per-column filter dropdown (mounted in document.body, one at a time).
+  _filterDropdown: HTMLElement | null = null;
+  _filterDropdownCleanup: (() => void) | null = null;
 
   static VIRTUALIZE_THRESHOLD = 1000;
 
@@ -605,7 +608,6 @@ export class DataEntryTable extends HTMLElement {
     }
     tbody.innerHTML = this._buildBodyHTML();
     this._attachBodyListeners();
-    this._refreshFilterDatalists();
 
     this.dispatchEvent(
       new CustomEvent("row-count-changed", {
@@ -637,12 +639,7 @@ export class DataEntryTable extends HTMLElement {
 
   _buildHeadHTML() {
     const visible = this._visibleColumnIndices();
-    const anyFilter = (this.filters || []).some((f) => !!f);
-    const activeCls = anyFilter ? " active" : "";
-    let html =
-      '<thead><tr><th class="row-actions">' +
-      `<button type="button" class="filter-toggle${activeCls}" title="Filter/Search Data"><span class="material-icons" style="font-size:18px;vertical-align:middle;">filter_alt</span></button>` +
-      "</th>";
+    let html = '<thead><tr><th class="row-actions"></th>';
     visible.forEach((index) => {
       const col = this.columns[index];
       const dataType = col.type;
@@ -656,39 +653,22 @@ export class DataEntryTable extends HTMLElement {
         flagTitles.push("Primary Key");
       }
       const keyIcon = flagSyms.length ? `<span class="key-indicator" title="${flagTitles.join(", ")}">${flagSyms.join("")}</span>` : "";
-      html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}<span class="col-resizer" data-resize-index="${index}"></span></th>`;
+      const filterActive = !!(this.filters[index] || "").toString().trim();
+      const triggerCls = "col-filter-trigger" + (filterActive ? " active" : "");
+      html += `<th data-index="${index}" class="${classNames.join(" ")}"><span class="column-name" data-index="${index}" title="${col.field}:${dataType}">${col.name}</span>${keyIcon}<button type="button" class="${triggerCls}" data-index="${index}" title="Filter column"><span class="material-icons" style="font-size:18px;vertical-align:middle;">filter_alt</span></button><span class="col-resizer" data-resize-index="${index}"></span></th>`;
     });
-    html += "</tr>";
-    html +=
-      `<tr class="filter-row ${this.filters.find((f) => !!f) ? "" : "hide"}"><td></td>` +
-      visible.map((index) => `<td><input class="filter-input" fieldIndex="${index}" value="${this.filters[index] || ""}" placeholder="filter…" list="filter-list-${index}"/></td>`).join(" ") +
-      "</tr></thead>";
-    html += this._buildFilterDatalists();
+    html += "</tr></thead>";
     return html;
   }
 
-  // Build one <datalist> per column with the column's unique displayed values
-  // for autocomplete in the filter inputs. Each column's suggestions reflect rows
-  // that pass every OTHER column's filter — i.e. faceted-search semantics — so
-  // narrowing one column shrinks the other columns' dropdowns.
-  _buildFilterDatalists() {
-    let html = "";
-    this._visibleColumnIndices().forEach((index) => {
-      html += `<datalist id="filter-list-${index}">${this._buildFilterOptions(index)}</datalist>`;
-    });
-    return html;
-  }
-
-  // Inner <option> HTML for one column's datalist. Filters by every active filter
-  // EXCEPT the one in `columnIndex` itself (so a column's own dropdown isn't
-  // pre-narrowed by what the user has already typed in that column). Capped to
-  // keep the payload bounded on very wide value sets.
-  _buildFilterOptions(columnIndex) {
+  // Unique displayed values for one column, faceted by every OTHER column's filter
+  // (so a column's own dropdown isn't pre-narrowed by what the user already typed
+  // in that column). Capped at 500 to keep the option list bounded.
+  _buildFilterOptionsArray(columnIndex: number): string[] {
     const MAX = 500;
     const col = this.columns[columnIndex];
     const active = (this.filters || []).map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() })).filter((x) => x.f && x.i !== columnIndex);
-
-    const seen = new Set();
+    const seen = new Set<string>();
     for (let r = 0; r < this.dataArray.length && seen.size < MAX; r++) {
       const row = this.dataArray[r];
       let pass = true;
@@ -705,19 +685,90 @@ export class DataEntryTable extends HTMLElement {
       if (text === "") continue;
       seen.add(text);
     }
-    const opts = [...seen].sort((a, b) => String(a).localeCompare(String(b)));
-    return opts.map((v) => `<option value="${this._escapeHTML(v)}"></option>`).join("");
+    return [...seen].sort((a, b) => String(a).localeCompare(String(b)));
   }
 
-  // Refresh existing <datalist> elements in place (replace their inner options).
-  // Replacing innerHTML on the datalist rather than swapping the <datalist> element
-  // itself avoids disturbing the input the user is currently typing in.
-  _refreshFilterDatalists() {
-    this._visibleColumnIndices().forEach((index) => {
-      const dl = this.shadowRoot.getElementById(`filter-list-${index}`);
-      if (!dl) return;
-      dl.innerHTML = this._buildFilterOptions(index);
+  // Open a per-column filter dropdown anchored under the column-header trigger.
+  // Mounted in document.body so it can escape the panel/table clip boundaries.
+  _openColumnFilterDropdown(columnIndex: number, anchorEl: HTMLElement) {
+    this._closeColumnFilterDropdown();
+    const col = this.columns[columnIndex];
+    const dropdown = document.createElement("div");
+    dropdown.className = "column-filter-dropdown";
+    dropdown.innerHTML = `
+      <div class="cfd-header"><span class="cfd-title"></span><button type="button" class="cfd-close" title="Close" tabindex="-1">×</button></div>
+      <input type="text" class="cfd-input" placeholder="filter…" />
+      <ul class="cfd-list"></ul>`;
+    (dropdown.querySelector(".cfd-title") as HTMLElement).textContent = col.name;
+
+    const rect = anchorEl.getBoundingClientRect();
+    const left = Math.min(rect.left, window.innerWidth - 240);
+    dropdown.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${Math.max(8, left)}px;min-width:200px;max-width:320px;max-height:320px;background:#fff;border:1px solid #d0d0d0;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.18);z-index:100000;padding:6px;display:flex;flex-direction:column;gap:4px;font-family:Arial,sans-serif;font-size:13px;color:#222;`;
+    const header = dropdown.querySelector(".cfd-header") as HTMLDivElement;
+    header.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:0 2px;";
+    (dropdown.querySelector(".cfd-title") as HTMLElement).style.cssText = "font-weight:600;color:#444;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    const close = dropdown.querySelector(".cfd-close") as HTMLButtonElement;
+    close.style.cssText = "background:none;border:0;cursor:pointer;font-size:18px;line-height:1;color:#888;padding:0 4px;border-radius:3px;";
+    const input = dropdown.querySelector(".cfd-input") as HTMLInputElement;
+    input.style.cssText = "width:100%;padding:4px 8px;font-size:13px;border:1px solid #d0d0d0;border-radius:3px;outline:none;box-sizing:border-box;";
+    input.value = this.filters[columnIndex] || "";
+    const list = dropdown.querySelector(".cfd-list") as HTMLUListElement;
+    list.style.cssText = "list-style:none;margin:0;padding:0;overflow-y:auto;flex:1;min-height:0;";
+
+    const renderOptions = () => {
+      const opts = this._buildFilterOptionsArray(columnIndex);
+      list.innerHTML = opts.map((v) => `<li data-value="${this._escapeHTML(v)}" style="padding:4px 8px;cursor:pointer;border-radius:3px;">${this._escapeHTML(v)}</li>`).join("");
+      list.querySelectorAll("li").forEach((li) => {
+        (li as HTMLElement).addEventListener("mouseenter", () => ((li as HTMLElement).style.background = "#e8f0fe"));
+        (li as HTMLElement).addEventListener("mouseleave", () => ((li as HTMLElement).style.background = ""));
+      });
+    };
+    renderOptions();
+
+    const applyFilter = (value: string) => {
+      this.filters[columnIndex] = value.trim();
+      this._renderBodyOnly();
+      anchorEl.classList.toggle("active", !!this.filters[columnIndex]);
+    };
+
+    input.addEventListener("input", () => applyFilter(input.value));
+    list.addEventListener("click", (e) => {
+      const li = (e.target as HTMLElement).closest("li[data-value]") as HTMLLIElement | null;
+      if (!li) return;
+      input.value = li.dataset.value || "";
+      applyFilter(input.value);
+      //input.focus();
+      this._closeColumnFilterDropdown();
     });
+    close.addEventListener("click", () => this._closeColumnFilterDropdown());
+    dropdown.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Escape") this._closeColumnFilterDropdown();
+    });
+
+    // Close on any click outside the dropdown (covers non-focusable click targets).
+    const onDocPointerDown = (e: Event) => {
+      if (dropdown.contains(e.target as Node)) return;
+      if (anchorEl.contains(e.target as Node)) return; // re-clicking the trigger is handled separately
+      this._closeColumnFilterDropdown();
+    };
+    setTimeout(() => document.addEventListener("pointerdown", onDocPointerDown, true), 0);
+
+    document.body.appendChild(dropdown);
+    this._filterDropdown = dropdown;
+    this._filterDropdownCleanup = () => document.removeEventListener("pointerdown", onDocPointerDown, true);
+    input.focus();
+    input.select();
+  }
+
+  _closeColumnFilterDropdown() {
+    if (this._filterDropdownCleanup) {
+      this._filterDropdownCleanup();
+      this._filterDropdownCleanup = null;
+    }
+    if (this._filterDropdown) {
+      this._filterDropdown.remove();
+      this._filterDropdown = null;
+    }
   }
 
   _buildBodyHTML() {
@@ -947,28 +998,19 @@ export class DataEntryTable extends HTMLElement {
   }
 
   _attachHeadListeners() {
-    // Filter toggle — small icon button in the row-actions gutter. Shows/hides
-    // the filter row and tracks an "active" highlight when any filter is set.
-    const filterToggle = this.shadowRoot.querySelector("button.filter-toggle") as HTMLButtonElement | null;
-    if (filterToggle) {
-      filterToggle.addEventListener("click", (e) => {
+    // Per-column filter triggers: small ▾ button in each column header opens a
+    // custom dropdown anchored under the header (mounted in document.body).
+    const filterTriggers = this.shadowRoot.querySelectorAll("button.col-filter-trigger") as NodeListOf<HTMLButtonElement>;
+    filterTriggers.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const filterRow = this.shadowRoot.querySelector(".filter-row");
-        if (!filterRow) return;
-        filterRow.classList.toggle("hide");
-        const visibleNow = !filterRow.classList.contains("hide");
-        filterToggle.classList.toggle("active", visibleNow || (this.filters || []).some((f) => !!f));
-      });
-    }
-
-    // Filter fields — live filter on every keystroke. Calls _renderBodyOnly so
-    // the filter-row input itself keeps focus and caret position.
-    const filterFields = this.shadowRoot.querySelectorAll("td input.filter-input") as NodeListOf<HTMLInputElement>;
-    filterFields.forEach((field) => {
-      field.addEventListener("input", () => {
-        const fieldIndex = parseInt(field.getAttribute("fieldIndex"));
-        this.filters[fieldIndex] = field.value.trim();
-        this._renderBodyOnly();
+        const idx = parseInt(btn.getAttribute("data-index"));
+        // Re-click on an active trigger closes the dropdown.
+        if (this._filterDropdown) {
+          this._closeColumnFilterDropdown();
+          return;
+        }
+        this._openColumnFilterDropdown(idx, btn);
       });
     });
 
@@ -976,11 +1018,11 @@ export class DataEntryTable extends HTMLElement {
     const headers = this.shadowRoot.querySelectorAll("th[data-index]") as NodeListOf<HTMLElement>;
     headers.forEach((header) => {
       header.addEventListener("click", (e) => {
-        // Suppress click on column name or dblclick event is not fired
         let el = e.target as HTMLElement;
-        if (el.classList.contains("column-name")) return;
         // Resize handle clicks must never sort.
         if (el.classList.contains("col-resizer")) return;
+        // Filter-trigger clicks must never sort.
+        if (el.classList.contains("col-filter-trigger")) return;
 
         const columnIndex = parseInt(header.getAttribute("data-index"));
 
@@ -1211,10 +1253,10 @@ export class DataEntryTable extends HTMLElement {
   // user's choice ("save" after a successful Save click; "cancel" for Cancel/×/Esc).
   openColumnEditor(): Promise<"save" | "cancel"> {
     return new Promise((resolve) => {
-    const tableName = (this.storageKey || "").replace(/\.table\.json$/, "") || "table";
-    const dlg = document.createElement("dialog");
-    dlg.className = "rounded-lg shadow-xl p-0 bg-white backdrop:bg-black/40 max-w-4xl w-[90vw]";
-    dlg.innerHTML = `
+      const tableName = (this.storageKey || "").replace(/\.table\.json$/, "") || "table";
+      const dlg = document.createElement("dialog");
+      dlg.className = "rounded-lg shadow-xl p-0 bg-white backdrop:bg-black/40 max-w-4xl w-[90vw]";
+      dlg.innerHTML = `
       <form method="dialog" class="flex flex-col">
         <header class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <h3 class="text-lg font-semibold text-slate-800">Edit columns — <span class="title-name"></span></h3>
@@ -1247,91 +1289,91 @@ export class DataEntryTable extends HTMLElement {
         </footer>
       </form>
     `;
-    dlg.querySelector(".title-name").textContent = tableName;
+      dlg.querySelector(".title-name").textContent = tableName;
 
-    const tbody = dlg.querySelector(".rows") as HTMLElement;
-    // Iterate displayOrder (all entries — hidden included so user can toggle them back on).
-    const order = this.displayOrder && this.displayOrder.length === this.columns.length ? this.displayOrder : this.columns.map((_, i) => i);
-    order.forEach((idx) => tbody.appendChild(this._buildColumnEditorRow(this.columns[idx], idx)));
+      const tbody = dlg.querySelector(".rows") as HTMLElement;
+      // Iterate displayOrder (all entries — hidden included so user can toggle them back on).
+      const order = this.displayOrder && this.displayOrder.length === this.columns.length ? this.displayOrder : this.columns.map((_, i) => i);
+      order.forEach((idx) => tbody.appendChild(this._buildColumnEditorRow(this.columns[idx], idx)));
 
-    dlg.querySelector(".add-row").addEventListener("click", () => {
-      tbody.appendChild(this._buildColumnEditorRow({ field: "", name: "", type: "string", default: "", max: 0, isUnique: false, isNotNull: false, hidden: false }, null));
-    });
+      dlg.querySelector(".add-row").addEventListener("click", () => {
+        tbody.appendChild(this._buildColumnEditorRow({ field: "", name: "", type: "string", default: "", max: 0, isUnique: false, isNotNull: false, hidden: false }, null));
+      });
 
-    // Delete row + toggle visibility (event delegation)
-    tbody.addEventListener("click", (e) => {
-      const target = e.target as HTMLElement;
-      const delBtn = target.closest(".del");
-      if (delBtn) {
-        delBtn.closest("tr").remove();
-        return;
-      }
-      const eyeBtn = target.closest(".is-visible") as HTMLElement | null;
-      if (eyeBtn) {
-        const tr = eyeBtn.closest("tr") as HTMLElement;
-        const nowHidden = tr.dataset.hidden !== "true"; // toggle
-        tr.dataset.hidden = nowHidden ? "true" : "false";
-        const icon = eyeBtn.querySelector(".material-icons") as HTMLElement;
-        icon.textContent = nowHidden ? "visibility_off" : "visibility";
-        eyeBtn.setAttribute("title", nowHidden ? "Hidden — click to show in table" : "Visible — click to hide from table");
-      }
-    });
+      // Delete row + toggle visibility (event delegation)
+      tbody.addEventListener("click", (e) => {
+        const target = e.target as HTMLElement;
+        const delBtn = target.closest(".del");
+        if (delBtn) {
+          delBtn.closest("tr").remove();
+          return;
+        }
+        const eyeBtn = target.closest(".is-visible") as HTMLElement | null;
+        if (eyeBtn) {
+          const tr = eyeBtn.closest("tr") as HTMLElement;
+          const nowHidden = tr.dataset.hidden !== "true"; // toggle
+          tr.dataset.hidden = nowHidden ? "true" : "false";
+          const icon = eyeBtn.querySelector(".material-icons") as HTMLElement;
+          icon.textContent = nowHidden ? "visibility_off" : "visibility";
+          eyeBtn.setAttribute("title", nowHidden ? "Hidden — click to show in table" : "Visible — click to hide from table");
+        }
+      });
 
-    // Drag-to-reorder rows via HTML5 native drag. The drag handle's mousedown sets
-    // draggable on the parent <tr>; the <tr> handles the drag lifecycle.
-    let dragSrc: HTMLElement | null = null;
-    tbody.addEventListener("mousedown", (e) => {
-      const handle = (e.target as HTMLElement).closest(".drag-handle") as HTMLElement | null;
-      if (!handle) return;
-      const tr = handle.closest("tr") as HTMLElement;
-      if (tr) tr.setAttribute("draggable", "true");
-    });
-    tbody.addEventListener("dragstart", (e) => {
-      const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
-      if (!tr) return;
-      dragSrc = tr;
-      tr.style.opacity = "0.4";
-      // Firefox needs setData to start a drag.
-      e.dataTransfer?.setData("text/plain", "");
-      if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-    });
-    tbody.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      if (!dragSrc) return;
-      const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
-      if (!tr || tr === dragSrc || tr.parentElement !== tbody) return;
-      const rect = tr.getBoundingClientRect();
-      const before = e.clientY < rect.top + rect.height / 2;
-      tbody.insertBefore(dragSrc, before ? tr : tr.nextSibling);
-    });
-    const endDrag = () => {
-      if (dragSrc) dragSrc.style.opacity = "";
-      dragSrc = null;
-      tbody.querySelectorAll("tr[draggable]").forEach((tr) => tr.removeAttribute("draggable"));
-    };
-    tbody.addEventListener("dragend", endDrag);
-    tbody.addEventListener("drop", (e) => {
-      e.preventDefault();
-      endDrag();
-    });
+      // Drag-to-reorder rows via HTML5 native drag. The drag handle's mousedown sets
+      // draggable on the parent <tr>; the <tr> handles the drag lifecycle.
+      let dragSrc: HTMLElement | null = null;
+      tbody.addEventListener("mousedown", (e) => {
+        const handle = (e.target as HTMLElement).closest(".drag-handle") as HTMLElement | null;
+        if (!handle) return;
+        const tr = handle.closest("tr") as HTMLElement;
+        if (tr) tr.setAttribute("draggable", "true");
+      });
+      tbody.addEventListener("dragstart", (e) => {
+        const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
+        if (!tr) return;
+        dragSrc = tr;
+        tr.style.opacity = "0.4";
+        // Firefox needs setData to start a drag.
+        e.dataTransfer?.setData("text/plain", "");
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+      });
+      tbody.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (!dragSrc) return;
+        const tr = (e.target as HTMLElement).closest("tr") as HTMLElement | null;
+        if (!tr || tr === dragSrc || tr.parentElement !== tbody) return;
+        const rect = tr.getBoundingClientRect();
+        const before = e.clientY < rect.top + rect.height / 2;
+        tbody.insertBefore(dragSrc, before ? tr : tr.nextSibling);
+      });
+      const endDrag = () => {
+        if (dragSrc) dragSrc.style.opacity = "";
+        dragSrc = null;
+        tbody.querySelectorAll("tr[draggable]").forEach((tr) => tr.removeAttribute("draggable"));
+      };
+      tbody.addEventListener("dragend", endDrag);
+      tbody.addEventListener("drop", (e) => {
+        e.preventDefault();
+        endDrag();
+      });
 
-    let saved = false;
-    const closeDialog = () => dlg.close();
-    dlg.querySelector(".cancel").addEventListener("click", closeDialog);
-    dlg.querySelector(".close-x").addEventListener("click", closeDialog);
+      let saved = false;
+      const closeDialog = () => dlg.close();
+      dlg.querySelector(".cancel").addEventListener("click", closeDialog);
+      dlg.querySelector(".close-x").addEventListener("click", closeDialog);
 
-    dlg.querySelector(".save").addEventListener("click", () => {
-      if (this._applyColumnEditor(dlg, tbody)) saved = true; // close happens inside _applyColumnEditor on success
-    });
+      dlg.querySelector(".save").addEventListener("click", () => {
+        if (this._applyColumnEditor(dlg, tbody)) saved = true; // close happens inside _applyColumnEditor on success
+      });
 
-    // Auto-cleanup so successive opens don't accumulate detached <dialog>s.
-    dlg.addEventListener("close", () => {
-      dlg.remove();
-      resolve(saved ? "save" : "cancel");
-    });
-    document.body.appendChild(dlg);
-    dlg.showModal();
-    makeDialogDraggable(dlg, dlg.querySelector("header") as HTMLElement);
+      // Auto-cleanup so successive opens don't accumulate detached <dialog>s.
+      dlg.addEventListener("close", () => {
+        dlg.remove();
+        resolve(saved ? "save" : "cancel");
+      });
+      document.body.appendChild(dlg);
+      dlg.showModal();
+      makeDialogDraggable(dlg, dlg.querySelector("header") as HTMLElement);
     });
   }
 
