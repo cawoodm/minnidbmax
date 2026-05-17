@@ -158,7 +158,7 @@ export class DataEntryTable extends HTMLElement {
     this.importDataLines(inputLines, seperator, "manual");
   }
 
-  importDataLines(lines: string[], separator: string, mode: string) {
+  async importDataLines(lines: string[], separator: string, mode: string): Promise<"imported" | "cancelled" | void> {
     // Pre-parse all lines - extract (possibly quoted) data
     const parsedRows = lines.map((line) => this.parseCSV(line.trim(), separator)).filter((r) => r.length > 0);
     if (parsedRows.length === 0) return;
@@ -183,6 +183,7 @@ export class DataEntryTable extends HTMLElement {
         dataStart = 1;
       }
     }
+
     const dataRows = parsedRows.slice(dataStart);
 
     // Infer DMY/MDY per date/datetime column from the data rows; persist on the column.
@@ -213,12 +214,32 @@ export class DataEntryTable extends HTMLElement {
         }
       }
     }
-    // Clear the input field only on successful addition
     this.dataInput.value = "";
+
+    // When columns were freshly inferred, show the column editor so the user can confirm/edit before
+    // committing. Rows are already buffered in dataArray (not yet rendered) — _applyColumnEditor on
+    // Save will reshape rows in lockstep with any column changes (deletes, type changes, etc.).
+    if (isBlankTable) {
+      const choice = await this.openColumnEditor();
+      if (choice === "cancel") {
+        // Roll back the whole import: discard rows AND the freshly-inferred columns.
+        this.dataArray = [];
+        this.columns = [];
+        this.displayOrder = [];
+        this.filters = [];
+        this.saveToStorage();
+        this.renderTable();
+        return "cancelled";
+      }
+      // On Save, _applyColumnEditor already rendered + saved.
+    } else {
+      this.renderTable();
+      this.saveToStorage();
+    }
+
     if (errorLines == 0) this.showAlert("Data added successfully!");
     else this.showAlert(`Data imported, ${errorLines} lines skipped!`);
-    this.renderTable();
-    this.saveToStorage();
+    return "imported";
   }
 
   processLine(parsedValues) {
@@ -1186,8 +1207,10 @@ export class DataEntryTable extends HTMLElement {
   }
 
   // Open the column-definition editor dialog. Lives in document.body (outside Shadow DOM)
-  // so the global Tailwind stylesheet applies.
-  openColumnEditor() {
+  // so the global Tailwind stylesheet applies. Returns a Promise that resolves with the
+  // user's choice ("save" after a successful Save click; "cancel" for Cancel/×/Esc).
+  openColumnEditor(): Promise<"save" | "cancel"> {
+    return new Promise((resolve) => {
     const tableName = (this.storageKey || "").replace(/\.table\.json$/, "") || "table";
     const dlg = document.createElement("dialog");
     dlg.className = "rounded-lg shadow-xl p-0 bg-white backdrop:bg-black/40 max-w-4xl w-[90vw]";
@@ -1292,17 +1315,24 @@ export class DataEntryTable extends HTMLElement {
       endDrag();
     });
 
+    let saved = false;
     const closeDialog = () => dlg.close();
     dlg.querySelector(".cancel").addEventListener("click", closeDialog);
     dlg.querySelector(".close-x").addEventListener("click", closeDialog);
 
-    dlg.querySelector(".save").addEventListener("click", () => this._applyColumnEditor(dlg, tbody));
+    dlg.querySelector(".save").addEventListener("click", () => {
+      if (this._applyColumnEditor(dlg, tbody)) saved = true; // close happens inside _applyColumnEditor on success
+    });
 
     // Auto-cleanup so successive opens don't accumulate detached <dialog>s.
-    dlg.addEventListener("close", () => dlg.remove());
+    dlg.addEventListener("close", () => {
+      dlg.remove();
+      resolve(saved ? "save" : "cancel");
+    });
     document.body.appendChild(dlg);
     dlg.showModal();
     makeDialogDraggable(dlg, dlg.querySelector("header") as HTMLElement);
+    });
   }
 
   _buildColumnEditorRow(col, originalIndex) {
@@ -1344,14 +1374,14 @@ export class DataEntryTable extends HTMLElement {
 
   // Validate the working state, build new column + data arrays, run constraint checks,
   // and apply on success. Flags offending rows red and aborts on the first failure.
-  _applyColumnEditor(dlg, tbody) {
+  _applyColumnEditor(dlg, tbody): boolean {
     const flagRow = (tr) => tr.classList.add("bg-red-50", "ring-1", "ring-red-300");
     tbody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("bg-red-50", "ring-1", "ring-red-300"));
 
     const rows = Array.from(tbody.querySelectorAll("tr")) as HTMLElement[];
     if (rows.length === 0) {
       this.showAlert("Table must have at least one column", "error");
-      return;
+      return false;
     }
 
     // Working state in DIALOG order (= new display order).
@@ -1374,17 +1404,17 @@ export class DataEntryTable extends HTMLElement {
       if (!w.field) {
         flagRow(w.tr);
         this.showAlert("Field name cannot be empty", "error");
-        return;
+        return false;
       }
       if (!/^[a-zA-Z_][\w]*$/.test(w.field)) {
         flagRow(w.tr);
         this.showAlert(`Invalid field name: "${w.field}" (use letters, digits, underscore; must start with a letter or underscore)`, "error");
-        return;
+        return false;
       }
       if (fieldSet.has(w.field)) {
         flagRow(w.tr);
         this.showAlert(`Duplicate field name: "${w.field}"`, "error");
-        return;
+        return false;
       }
       fieldSet.add(w.field);
     }
@@ -1496,7 +1526,7 @@ export class DataEntryTable extends HTMLElement {
         const wIdx = wIdxToNewIdx.indexOf(colIdx);
         if (wIdx >= 0) flagRow(working[wIdx].tr);
         this.showAlert(`Cannot apply constraints to "${col.name}": ${parts.join(", ")}. Clean the data first.`, "error");
-        return;
+        return false;
       }
     }
 
@@ -1519,6 +1549,7 @@ export class DataEntryTable extends HTMLElement {
     this.saveToStorage();
     this.renderTable();
     dlg.close();
+    return true;
   }
 
   _toTitleCase(str) {

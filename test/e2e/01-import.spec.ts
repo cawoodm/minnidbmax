@@ -8,6 +8,8 @@ test.describe("Data import", () => {
 
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
+    // Column editor auto-opens to confirm the import; Save commits the rows.
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     // Headers come from the CSV header line.
     const headers = await readHeaders(page, "people");
@@ -26,8 +28,10 @@ test.describe("Data import", () => {
   test("drop a second CSV creates a second independent panel", async ({ page }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
     await dropFile(page, "products.csv");
     await waitForPanel(page, "products");
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     expect(await panelCount(page)).toBe(2);
     expect(await readHeaders(page, "people")).toEqual(["name", "age", "city"]);
@@ -39,6 +43,7 @@ test.describe("Data import", () => {
     // Pre-seed a noise table so we can confirm Replace clears it.
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
     expect(await panelCount(page)).toBe(1);
 
     await dropFile(page, "db-dump.json");
@@ -62,6 +67,7 @@ test.describe("Data import", () => {
     // Pre-seed a "people" table that is NOT in the dump.
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     await dropFile(page, "db-dump.json");
     await page.locator("dialog:has-text('Import database') button[value='overwrite']").click();
@@ -76,6 +82,7 @@ test.describe("Data import", () => {
   test("drop a JSON dump and choose Cancel → no state change", async ({ page }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     await dropFile(page, "db-dump.json");
     await page.locator("dialog:has-text('Import database') button[value='cancel']").click();

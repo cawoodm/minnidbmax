@@ -229,8 +229,6 @@ function generateTableInUI(code, data) {
     const { count } = (e as CustomEvent).detail;
     panel.setHeaderTitle(`${baseTitle} (${count})`);
   });
-  // Auto-open the column editor the first time columns are established (CSV import on a new table).
-  newTable.addEventListener("columns-established", () => newTable.openColumnEditor(), { once: true });
   // Initial render fired before the listener was attached — sync the title now.
   panel.setHeaderTitle(`${baseTitle} (${newTable.dataArray.length})`);
   if (globalSearchTerm) newTable.setGlobalFilter(globalSearchTerm);

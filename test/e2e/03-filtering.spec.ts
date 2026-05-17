@@ -5,7 +5,7 @@ test.describe("Filtering", () => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
     // Close the auto-opened column editor.
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
     // Reveal the filter row via the in-table filter toggle (first column header).
     await page.locator("#table-people button.filter-toggle").click();
   });

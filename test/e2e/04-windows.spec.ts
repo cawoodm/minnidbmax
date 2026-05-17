@@ -19,7 +19,7 @@ test.describe("Window management", () => {
   test("close a panel via the X control → empty-state returns when last panel closes", async ({ page }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
     expect(await panelCount(page)).toBe(1);
 
     // jsPanel asks "Are you sure" via confirm() before close (per deleteTable).
@@ -34,11 +34,11 @@ test.describe("Window management", () => {
   test("clicking a panel brings it to the front (z-order tracked)", async ({ page }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     await dropFile(page, "products.csv");
     await waitForPanel(page, "products");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     // The most recently-created panel is on top → its z-index in the DOM is highest.
     const productsZ = await page
@@ -66,7 +66,7 @@ test.describe("Window management", () => {
   test("panel position persists across reloads", async ({ page, workspace }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     // Move the panel to a known position via the public API jsPanel exposes.
     await page.locator(".jsPanel:has(#table-people)").evaluate((el: any) => {

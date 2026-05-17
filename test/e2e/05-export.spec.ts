@@ -4,7 +4,7 @@ test.describe("Data export", () => {
   test("footer Export CSV downloads the table as CSV", async ({ page }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     // Click the Export CSV footer icon. Two icons in the footer: file_upload (import) and
     // file_download (export). Match by title attribute to be precise.
@@ -36,10 +36,10 @@ test.describe("Data export", () => {
   test("header 'Dump' downloads the entire workspace as <workspace>.db.json", async ({ page, workspace }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
     await dropFile(page, "products.csv");
     await waitForPanel(page, "products");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     const downloadPromise = page.waitForEvent("download");
     await page.locator("#dataDump").click();
@@ -61,10 +61,10 @@ test.describe("Data export", () => {
     // Build a 2-table workspace.
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
     await dropFile(page, "products.csv");
     await waitForPanel(page, "products");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     // Dump it.
     const downloadPromise = page.waitForEvent("download");

@@ -18,12 +18,14 @@ test.describe("Column editor", () => {
 
     await dlg.locator("button.cancel").click();
     await expect(dlg).toBeHidden();
+    // Cancel during initial import is now transactional: the panel is removed.
+    await expect(page.locator(".jsPanel:has(#table-people)")).toHaveCount(0);
   });
 
   test("hide a column via the eye toggle → column disappears from the table, data preserved", async ({ page }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     // Re-open via the footer toolbar's "Edit columns" button.
     await page.locator(".jsPanel:has(#table-people) .jsPanel-ftr button[title='Edit columns']").click();
@@ -83,7 +85,7 @@ test.describe("Column editor", () => {
   test("drag a column header to reorder columns (in-place, display only)", async ({ page }) => {
     await dropFile(page, "people.csv");
     await waitForPanel(page, "people");
-    await page.locator("dialog:has-text('Edit columns') button.cancel").click();
+    await page.locator("dialog:has-text('Edit columns') button.save").click();
 
     // Initially: name, age, city.
     expect(await readHeaders(page, "people")).toEqual(["name", "age", "city"]);

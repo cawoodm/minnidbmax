@@ -44,23 +44,28 @@ async function handleCsvFile(file: File, table: string, deps: CsvImportDeps) {
   const newEl = document.getElementById("table-" + code) as any;
   if (newEl) {
     newEl.shadowRoot.querySelector(".input-container").classList.add("hide");
-    importCsvIntoTable(newEl, file, "new");
+    const result = await importCsvIntoTable(newEl, file, "new");
+    if (result === "cancelled") {
+      // User dismissed the column editor — undo the table creation so the drop is fully transactional.
+      const panel = newEl.closest(".jsPanel") as any;
+      if (panel) {
+        panel.options.onbeforeclose = null;
+        panel.close();
+      }
+      deps.store.delete(code + ".table.json");
+    }
   }
 }
 
-function importCsvIntoTable(el: any, file: File, mode: string) {
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const inputLines = ev
-      .target!.result!.toString()
-      .trim()
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    const seperator = inputLines[0].includes(";") ? ";" : inputLines[0].includes("\t") ? "\t" : ",";
-    el.importDataLines(inputLines, seperator, mode);
-  };
-  reader.readAsText(file, "UTF-8");
+async function importCsvIntoTable(el: any, file: File, mode: string) {
+  const text = await file.text();
+  const inputLines = text
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const seperator = inputLines[0].includes(";") ? ";" : inputLines[0].includes("\t") ? "\t" : ",";
+  return el.importDataLines(inputLines, seperator, mode);
 }
 
 function askImportMode(tableName: string): Promise<"append" | "overwrite" | null> {
