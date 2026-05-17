@@ -4,7 +4,7 @@
 * Edit raw data
 
 ## DB Features
-* Shouldn't allow 2 tables of same name case-sensitive
+* when importing new data which does not validate, suppress dialogs but flag the row with a hidden field "__ 
 * When importing a new table which exists prompt to overwrite, rename or cancel
   * Rename should prompt for a new name
 * Column editor should preview first 100 columns below

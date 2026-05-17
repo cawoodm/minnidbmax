@@ -40,6 +40,8 @@ let frontRank = (() => {
   return max;
 })();
 
+let globalSearchTerm = "";
+
 import { SyncherGist } from "./syncher-gist.js";
 const gistUsername = store.get(".gist-user");
 const gistToken = store.get(".gist-token");
@@ -95,7 +97,7 @@ function addTable() {
     showAlert("Table with this name already exists. Please choose a different name.", "error");
     return;
   }
-  createTable(code, null);
+  generateTableInUI(code, null);
 }
 
 function downloadFile(filename, content) {
@@ -108,7 +110,7 @@ function downloadFile(filename, content) {
   document.body.removeChild(element);
 }
 
-function createTable(code, data) {
+function generateTableInUI(code, data) {
   const newTable = document.createElement("data-entry-table") as DataEntryTable;
   newTable.setAttribute("storage-key", `${code}.table.json`);
   newTable.setAttribute("id", "table-" + code);
@@ -204,6 +206,7 @@ function createTable(code, data) {
   newTable.addEventListener("columns-established", () => newTable.openColumnEditor(), { once: true });
   // Initial render fired before the listener was attached — sync the title now.
   panel.setHeaderTitle(`${baseTitle} (${newTable.dataArray.length})`);
+  if (globalSearchTerm) newTable.setGlobalFilter(globalSearchTerm);
 
   function toTitleCase(str) {
     return str.replace(/\w\S*/g, (text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase());
@@ -291,7 +294,7 @@ async function onPageDrop(e: DragEvent) {
 
   Array.from(e.dataTransfer.files).forEach(async (file) => {
     if (await tryJsonDrop(file, table, { store, displayTables })) return;
-    if (await tryCsvDrop(file, table, { store, createTable })) return;
+    if (await tryCsvDrop(file, table, { store, createTable: generateTableInUI })) return;
   });
 }
 
@@ -305,7 +308,7 @@ function displayTables() {
     let el: DataEntryTable = document.querySelector("#table-" + table);
     if (!el) {
       try {
-        createTable(table, data);
+        generateTableInUI(table, data);
       } catch (e) {
         console.error(e);
         if (e instanceof Error) showAlert(`Error loading table (${table}) data: ${e.message}`, "error");
@@ -332,6 +335,11 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("dataPull").addEventListener("click", dataPull);
   document.getElementById("dataDump").addEventListener("click", dataDump);
   document.getElementById("addTable").addEventListener("click", addTable);
+  const searchEl = document.getElementById("globalSearch") as HTMLInputElement;
+  searchEl.addEventListener("input", () => {
+    globalSearchTerm = searchEl.value;
+    document.querySelectorAll<DataEntryTable>("data-entry-table").forEach((t) => t.setGlobalFilter(globalSearchTerm));
+  });
   document.addEventListener("dragenter", onPageDragenter);
   document.addEventListener("dragleave", onPageDragleave);
   document.addEventListener("dragover", onPageDragover);

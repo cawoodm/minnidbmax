@@ -10,6 +10,7 @@ export class DataEntryTable extends HTMLElement {
   dataArray: any[] = [];
   columns: any[] = [];
   filters: string[] = [];
+  globalFilter: string = "";
   elementRect: any = {};
   sortColumn: number = -1;
   sortDirection: "asc" | "desc" = "asc";
@@ -495,6 +496,11 @@ export class DataEntryTable extends HTMLElement {
     const active = (this.filters || []).map((f, i) => ({ i, f: (f || "").toString().trim().toLowerCase() })).filter((x) => x.f);
     if (active.length) {
       rows = rows.filter((row) => active.every(({ i, f }) => this._formatCellText(row[i], this.columns[i].type).toLowerCase().includes(f)));
+    }
+    // Global filter: OR across all columns, ANDed with per-column filters above.
+    const g = (this.globalFilter || "").trim().toLowerCase();
+    if (g) {
+      rows = rows.filter((row) => this.columns.some((col, i) => this._formatCellText(row[i], col.type).toLowerCase().includes(g)));
     }
     // Apply sort. Always copy so callers don't mutate dataArray.
     rows = [...rows];
@@ -1634,6 +1640,13 @@ export class DataEntryTable extends HTMLElement {
   refresh() {
     this.loadFromStorage();
     this.renderTable();
+  }
+
+  setGlobalFilter(term: string) {
+    const next = (term || "").trim().toLowerCase();
+    if (next === this.globalFilter) return;
+    this.globalFilter = next;
+    this._renderBodyOnly();
   }
 
   // Public method to export data as JSON
