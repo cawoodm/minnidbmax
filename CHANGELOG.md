@@ -1,5 +1,8 @@
 # Change Log
 
+## 2026-05-18
+- Gist connection string (v0.0.29)
+
 ## 2026-05-17
 - Filter dropdowns (v0.0.28)
 - Gist sync settings dialog (v0.0.27)

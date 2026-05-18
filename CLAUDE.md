@@ -18,7 +18,7 @@ Pure client-side static web app — no server, no backend. Three layers:
 
 2. **`DataStore(prefix)`** (`src/data-store.ts`) — thin localStorage wrapper. Exports both the `DataStore` interface (canonical type for the store API) and the factory function of the same name — consumers `import { DataStore }` and use it in value position (call the factory) or type position (annotate `let s: DataStore`). The active workspace (resolved from `?space=<name>` or `localStorage['/minnidbmax/.currentStore']`, default `default`) lives in `src/workspace.ts`, which also owns the header `<select>` UI (`initWorkspaceSelect`). The app constructs one store per workspace with prefix `/minnidbmax/<workspace>/`, exposed as `window.store` so the custom element can reach it (see `saveToStorage`/`loadFromStorage` in `data-table.ts`). Workspaces come from `?space=<name>` or `localStorage['/minnidbmax/.currentStore']`, default `default`.
 
-3. **Gist sync** (`src/syncher-gist.js` + `src/gist.js`) — optional push/pull of all `*.table.json` entries to a single GitHub Gist. Credentials are read from store keys `.gist-user`, `.gist-token`, `.gist-id` (must be set manually via the JS console — README has the snippet). 1 MB Gist file limit.
+3. **Gist sync** (`src/syncher-gist.js` + `src/gist.js`) — optional push/pull of all `*.table.json` entries to a single GitHub Gist. Credentials are read from store key `.synch/gist` (a connection string `user=...;gist_id=...;gist_token=...;`) — entered via the in-app settings dialog in `src/app.ts`. 1 MB Gist file limit.
 
 `src/app.ts` wires it all together: defines the custom element, builds the DataStore, creates a jsPanel per stored table, and binds the four toolbar buttons.
 
@@ -38,7 +38,7 @@ Wiring notes for `createTable()` in `src/app.ts`:
 
 Keys under the workspace prefix:
 - `<code>.table.json` — one per table; value is `{ dataArray, columns, elementRect, sortColumn, sortDirection }`.
-- `.gist-user`, `.gist-token`, `.gist-id` — sync credentials.
+- `.synch/gist` — Gist sync credentials as a connection string: `user=...;gist_id=...;gist_token=...;`.
 - `code` is derived from the table title via `title.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()`.
 
 ### Column metadata mini-language

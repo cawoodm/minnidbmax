@@ -57,11 +57,15 @@ Click filter to filter columns, enter a search term or select from the list of v
 * Switch workspaces in the top left or create a new workspace
 
 ## Data Storage
-Every change is immediately stored in your browsers `localStorage`.
-In order to Push/Pull data you need to [create](http://gist.github.com/) a (preferably Secret) Gist and supply the GistID and an [API token](https://docs.github.com/en/rest/gists/gists?apiVersion=2022-11-28#list-gists-for-the-authenticated-user) by entering them in your JS Console (press Ctrl+Shift+I or F12):
-* `localStorage.setItem('minnidb-gist-token', 'github_pat_***')`
-* `localStorage.setItem('minnidb-gist-id', 'c4c***')`
-You will now be able to synch your data with this Gist for free on Github.
+Every change is immediately stored in your browser's `localStorage`.
+
+To Push/Pull data you need a (preferably Secret) [Gist](http://gist.github.com/) and a fine-grained GitHub [PAT](https://github.com/settings/tokens?type=beta) with `gist` scope. Click **Push** or **Pull** and the settings dialog will prompt for a connection string:
+
+```
+user=<github-user>;gist_id=<id>;gist_token=<pat>;
+```
+
+Credentials are stored per-workspace in `localStorage` at the key `.synch/gist`.
 
 ## Import/Export
 * Each table can import/export data via .csv and supports drag and drop

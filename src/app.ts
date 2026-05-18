@@ -51,20 +51,42 @@ function panelContainment(): [number, number, number, number] {
   return [headerHeight, 0, footerHeight + dockHeight, 0];
 }
 
-import { SyncherGist } from "./syncher-gist.js";
 import { makeDialogDraggable } from "./draggable-dialog";
+import { SyncherGist } from "./syncher-gist.js";
+
+const GIST_CONN_KEY = ".synch/gist";
+
+type GistConn = { user: string; gist_id: string; gist_token: string };
+
+function parseGistConn(s: string | undefined | null): GistConn | null {
+  if (!s) return null;
+  const out: Record<string, string> = {};
+  for (const pair of s.split(";")) {
+    const eq = pair.indexOf("=");
+    if (eq < 0) continue;
+    const k = pair.slice(0, eq).trim();
+    const v = pair.slice(eq + 1).trim();
+    if (k) out[k] = v;
+  }
+  if (!out.user || !out.gist_id || !out.gist_token) return null;
+  return { user: out.user, gist_id: out.gist_id, gist_token: out.gist_token };
+}
+
+function formatGistConn(c: GistConn): string {
+  return `user=${c.user};gist_id=${c.gist_id};gist_token=${c.gist_token};`;
+}
 
 // Build a fresh SyncherGist each call so credentials updated via the settings dialog
 // take effect immediately (the previous module-singleton captured stale values).
 function makeSyncher() {
-  return SyncherGist(store.get(".gist-user"), store.get(".gist-token"), store.get(".gist-id"), store);
+  const c = parseGistConn(store.get(GIST_CONN_KEY)) ?? { user: "", gist_id: "", gist_token: "" };
+  return SyncherGist(c.user, c.gist_token, c.gist_id, store);
 }
 
-// Ensure all three Gist credentials are set. If any are missing, open the settings dialog
-// and let the user fill them in. Resolves to true if credentials are now present (either
-// because they already were, or because the user filled them in), false on Cancel.
+// Ensure Gist credentials are set. If the connection string is missing or incomplete,
+// open the settings dialog. Resolves true if credentials are now present, false on Cancel.
 async function ensureGistCredentials(): Promise<boolean> {
-  if (store.get(".gist-user") && store.get(".gist-token") && store.get(".gist-id")) return true;
+  if (parseGistConn(store.get(GIST_CONN_KEY))) return true;
   return openSyncSettingsDialog();
 }
 
@@ -77,46 +99,33 @@ function openSyncSettingsDialog(): Promise<boolean> {
         <h3 class="text-lg font-semibold text-slate-800">Gist sync settings</h3>
         <p class="text-sm text-slate-600 mt-1">Configure GitHub credentials so Push/Pull can read/write your Gist.</p>
       </header>
-      <div class="px-6 py-4 space-y-3">
+      <div class="px-6 py-4">
         <label class="block">
-          <span class="text-sm font-medium text-slate-700">GitHub username</span>
-          <input name="user" type="text" autocomplete="username" class="mt-1 w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
-        </label>
-        <label class="block">
-          <span class="text-sm font-medium text-slate-700">Personal access token</span>
-          <p class="text-xs text-slate-500 mb-1">Fine-grained PAT with <code>gist</code> scope — <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener" class="text-blue-600 hover:underline">create one</a>.</p>
-          <input name="token" type="password" autocomplete="off" spellcheck="false" class="w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono" />
-        </label>
-        <label class="block">
-          <span class="text-sm font-medium text-slate-700">Gist ID</span>
-          <p class="text-xs text-slate-500 mb-1">The hash from <code>https://gist.github.com/&lt;you&gt;/<strong>&lt;id&gt;</strong></code>.</p>
-          <input name="id" type="text" spellcheck="false" class="w-full rounded border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 font-mono" />
+          <span class="text-sm font-medium text-slate-700">Connection string</span>
+          <p class="text-xs text-slate-500 mb-1">
+            Format: <code>user=&lt;github-user&gt;;gist_id=&lt;id&gt;;gist_token=&lt;pat&gt;;</code><br>
+            Classic token <a href="https://github.com/settings/tokens" target="_blank" rel="noopener" class="text-blue-600 hover:underline">here</a>.
+            Gist ID is visible in the URL of the gist from <code>https://gist.github.com/&lt;you&gt;/&lt;id&gt;</code>.
+          </p>
+          <textarea name="conn" rows="4" spellcheck="false" class="w-full rounded border border-slate-300 px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"></textarea>
         </label>
       </div>
       <footer class="flex justify-end gap-2 px-6 py-3 border-t border-slate-200 bg-slate-50">
         <button type="button" class="cancel rounded bg-slate-200 hover:bg-slate-300 px-4 py-1.5 text-sm">Cancel</button>
         <button type="button" class="save rounded bg-blue-600 hover:bg-blue-500 px-4 py-1.5 text-sm text-white font-medium">Save</button>
       </footer>`;
-    const userInput = dlg.querySelector("input[name='user']") as HTMLInputElement;
-    const tokenInput = dlg.querySelector("input[name='token']") as HTMLInputElement;
-    const idInput = dlg.querySelector("input[name='id']") as HTMLInputElement;
-    userInput.value = store.get(".gist-user") || "";
-    tokenInput.value = store.get(".gist-token") || "";
-    idInput.value = store.get(".gist-id") || "";
+    const connInput = dlg.querySelector("textarea[name='conn']") as HTMLTextAreaElement;
+    connInput.value = store.get(GIST_CONN_KEY) || "";
 
     let saved = false;
     dlg.querySelector(".cancel").addEventListener("click", () => dlg.close());
     dlg.querySelector(".save").addEventListener("click", () => {
-      const user = userInput.value.trim();
-      const token = tokenInput.value.trim();
-      const id = idInput.value.trim();
-      if (!user || !token || !id) {
-        showAlert("All three fields are required.", "error", "Gist sync");
+      const parsed = parseGistConn(connInput.value.trim());
+      if (!parsed) {
+        showAlert("Connection string must include user, gist_id, and gist_token.", "error", "Gist sync");
         return;
       }
-      store.set(".gist-user", user);
-      store.set(".gist-token", token);
-      store.set(".gist-id", id);
+      store.set(GIST_CONN_KEY, formatGistConn(parsed));
       saved = true;
       dlg.close();
     });
@@ -127,7 +136,7 @@ function openSyncSettingsDialog(): Promise<boolean> {
     document.body.appendChild(dlg);
     dlg.showModal();
     makeDialogDraggable(dlg, dlg.querySelector("header") as HTMLElement);
-    userInput.focus();
+    connInput.focus();
   });
 }
 
@@ -146,6 +155,7 @@ async function dataPull() {
   if (!(await ensureGistCredentials())) return;
   try {
     await makeSyncher().load();
+    showAlert("Data pulled from Gist.", "success", "Gist sync");
     displayTables();
   } catch (e) {
     if (e instanceof Error) {
